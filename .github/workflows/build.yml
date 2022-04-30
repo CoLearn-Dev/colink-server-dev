@@ -33,7 +33,9 @@ jobs:
       - name: Clippy test
         run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
       - name: Pull SDK
-        run: bash pull-and-build-sdk.sh
+        run: |
+          ssh-keygen -R github.com
+          bash pull-and-build-sdk.sh
         working-directory: tests
       - name: Run tests
         run: cargo test

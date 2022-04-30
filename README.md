@@ -1,11 +1,11 @@
-# Decentralized Data Science
+# CoLink
 
-DDS provides a unified interface for the user, storage, communication, and computation. Extending gRPC, DDS simplifies the development of multi-party protocols and allow implementations in different programming languages to work together consistently. With a unified interface that increases potential data contributors, DDS has the potential to enable larger-scale decentralized data collaboration and unlock the true value of data.
+CoLink provides a unified interface for the user, storage, communication, and computation. Extending gRPC, CoLink simplifies the development of multi-party protocols and allow implementations in different programming languages to work together consistently. With a unified interface that increases potential data contributors, CoLink has the potential to enable larger-scale decentralized data collaboration and unlock the true value of data.
 
 ## Preparations
 
 ### Generate mTLS certificates
-The DDS server and the clients uses mTLS to communicate. In the repo, we included a set of [example certificates](https://github.com/CoLearn-Dev/colink-integration-test-dev/tree/main/example-tls/test-cert). **Please DO NOT use the example certificates in a production environment.**
+The CoLink server and the clients uses mTLS to communicate. In the repo, we included a set of [example certificates](https://github.com/CoLearn-Dev/colink-integration-test-dev/tree/main/example-tls/test-cert). **Please DO NOT use the example certificates in a production environment.**
 
 To generate the corresponding certificates for mTLS, you can use OpenSSL or CFSSL.
 
@@ -33,10 +33,10 @@ git clone https://github.com/microsoft/vcpkg
 set VCPKGRS_DYNAMIC=1
 ```
 
-## Start DDS server
-DDS server requires a [message queue](#set-up-rabbitmq) as its building block. When starting the DDS server, we need to specify MQ's URI and management API here. 
+## Start CoLink server
+CoLink server requires a [message queue](#set-up-rabbitmq) as its building block. When starting the CoLink server, we need to specify MQ's URI and management API here. 
 
-Use the following command to start the DDS server
+Use the following command to start the CoLink server
 ```
 cargo run -- --address <address> --port <port> --mq-amqp <amqp uri> --mq-api <mq api> --mq-prefix <mq prefix> \
  --cert <server certificate> --key <server key> --ca <client ca certificate> \
@@ -69,9 +69,9 @@ Alternatively, you can use [grpcurl](https://github.com/fullstorydev/grpcurl) to
 grpcurl -cacert ./example-tls/test-cert/ca.pem \
  -cert example-tls/test-cert/client.pem \
  -key example-tls/test-cert/client-key.pem \
- -import-path ./proto -proto dds.proto \
+ -import-path ./proto -proto colink.proto \
  -d '{"key_name": "hi", "payload": "eW9v"}' -H "authorization: REPLACE_WITH_JWT" \
- 127.0.0.1:8080 dds.DDS/CreateEntry
+ 127.0.0.1:8080 colink.CoLink/CreateEntry
 ```
 
 
