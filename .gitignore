@@ -1,0 +1,6 @@
+/target
+/.idea
+/.vscode
+admin_token.txt
+/tests/sdk-a/
+/tests/sdk-p/

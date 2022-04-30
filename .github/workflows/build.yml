@@ -1,0 +1,40 @@
+on: [push]
+
+name: build
+
+jobs:
+  check:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.SSH_KEY }}
+      - name: SSH Agent
+        run: |
+          eval `ssh-agent`
+          ssh-add - <<< "${{ secrets.SSH_KEY }}"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Check
+        run: cargo check --release
+      - name: Build
+        run: cargo build --all-targets
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy test
+        run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
+      - name: Pull SDK
+        run: bash pull-and-build-sdk.sh
+        working-directory: tests
+      - name: Run tests
+        run: cargo test
+        timeout-minutes: 10
