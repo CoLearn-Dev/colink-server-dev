@@ -56,6 +56,9 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         "127.0.0.1",
         50000
     );
+    if std::fs::metadata("admin_token.txt").is_ok() {
+        std::fs::remove_file("admin_token.txt")?;
+    }
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
         50000,
@@ -69,7 +72,14 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
     ));
-    tokio::time::sleep(core::time::Duration::from_secs(1)).await;
+    loop {
+        if std::fs::metadata("admin_token.txt").is_ok()
+            && std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 50000)).is_ok()
+        {
+            break;
+        }
+        tokio::time::sleep(core::time::Duration::from_millis(100)).await;
+    }
     test_storage_crud().await;
     test_invalid_signature().await;
     Ok(())
