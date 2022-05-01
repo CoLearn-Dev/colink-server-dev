@@ -1,4 +1,4 @@
-use colink_core::server::init_and_run_server;
+use colink_server::server::init_and_run_server;
 use std::path::PathBuf;
 use structopt::StructOpt;
 

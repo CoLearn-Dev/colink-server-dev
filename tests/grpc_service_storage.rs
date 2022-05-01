@@ -2,7 +2,7 @@ pub mod colink_proto {
     tonic::include_proto!("colink");
 }
 
-use ::colink_core::server::init_and_run_server;
+use ::colink_server::server::init_and_run_server;
 use chrono::Duration;
 use colink_proto::co_link_client::CoLinkClient;
 use colink_proto::*;

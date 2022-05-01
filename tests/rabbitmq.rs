@@ -1,4 +1,4 @@
-use ::colink_core::mq::{common::MQ, rabbitmq::RabbitMQ};
+use ::colink_server::mq::{common::MQ, rabbitmq::RabbitMQ};
 
 const MQ_AMQP: &str = "amqp://guest:guest@localhost:5672";
 const MQ_API: &str = "http://guest:guest@localhost:15672/api";
