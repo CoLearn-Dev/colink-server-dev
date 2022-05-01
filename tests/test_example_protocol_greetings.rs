@@ -24,7 +24,7 @@ fn test_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     build();
     for i in 0..11 {
-        test_greetings(50000 + i, USER_NUM[i as usize])?;
+        test_greetings(10000 + i, USER_NUM[i as usize])?;
     }
     Ok(())
 }
