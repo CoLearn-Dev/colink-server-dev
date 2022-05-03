@@ -5,7 +5,7 @@ rm -rf sdk-p
 git clone --recursive git@github.com:CoLearn-Dev/colink-sdk-a-rust-dev.git sdk-a
 git clone --recursive git@github.com:CoLearn-Dev/colink-sdk-p-rust-dev.git sdk-p
 cd sdk-a
-git checkout 451471f45cb42e19ed8fadea805ecf2cd9464265
+git checkout 9f460c4858971b7530ad35379d174da6c6da1e3f
 cargo build --all-targets
 cd ..
 cd sdk-p
