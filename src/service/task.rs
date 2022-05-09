@@ -377,6 +377,10 @@ impl crate::server::MyService {
             return Err(Status::internal("Task Not found."));
         }
         list.task_ids_with_key_paths.remove(index);
+        let mut payload = vec![];
+        list.encode(&mut payload).unwrap();
+        self._colink_internal_storage_update(user_id, &list_key, &payload)
+            .await?;
         Ok(())
     }
 
