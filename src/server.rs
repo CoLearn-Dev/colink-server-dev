@@ -5,8 +5,8 @@ use crate::service::auth::{gen_jwt, print_admin_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use secp256k1::Secp256k1;
+use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 use tonic::{
     transport::{Certificate, Identity, Server, ServerTlsConfig},
@@ -19,7 +19,7 @@ pub struct MyService {
     pub jwt_secret: [u8; 32],
     pub mq: Box<dyn MQ>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
-    pub task_storage_mutex: Arc<Mutex<i32>>,
+    pub task_storage_mutex: Mutex<i32>,
     pub public_key: secp256k1::PublicKey,
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
@@ -177,7 +177,7 @@ async fn run_server(
         )),
         jwt_secret,
         mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
-        task_storage_mutex: Arc::new(Mutex::new(0)),
+        task_storage_mutex: Mutex::new(0),
         secret_key: core_secret_key,
         public_key: core_public_key,
         inter_core_ca_certificate: None,
