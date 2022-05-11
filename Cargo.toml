@@ -1,0 +1,30 @@
+[package]
+name = "colink-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+base64 = "0.13.0"
+chrono = "0.4"
+futures-lite = "1.12"
+jsonwebtoken = "7.2"
+lapin = "2.1"
+openssl = "0.10"
+passwords = "3.1"
+prost = "0.9"
+rand = { version = "0.8.4", features = ["std_rng"] }
+reqwest = { version = "0.11", features = ["json"] }
+secp256k1 = { version = "0.21.2", features = ["rand-std"] }
+serde = "1.0"
+serde_json = "1.0"
+structopt = "0.3"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "rt", "fs"] }
+tonic = { version = "0.6", features = ["tls", "tls-roots"] }
+tracing = "0.1"
+tracing-subscriber = "0.2"
+url = "2.2"
+uuid = { version = "0.8", features = ["v4"] }
+
+[build-dependencies]
+tonic-build = "0.6"
