@@ -332,9 +332,13 @@ impl crate::server::MyService {
         Ok(Response::new(Empty::default()))
     }
 
-    async fn remove_task_old_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
-        let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
-        let list = self._internal_storage_read(user_id, &list_key).await?;
+    async fn remove_task_from_list_in_storage(
+        &self,
+        user_id: &str,
+        task: &Task,
+        list_key: &str,
+    ) -> Result<(), Status> {
+        let list = self._internal_storage_read(user_id, list_key).await?;
         let mut list: CoLinkInternalTaskIdList = Message::decode(&*list).unwrap();
         let mut index = list.task_ids_with_key_paths.len();
         for i in 0..list.task_ids_with_key_paths.len() {
@@ -349,14 +353,28 @@ impl crate::server::MyService {
         list.task_ids_with_key_paths.remove(index);
         let mut payload = vec![];
         list.encode(&mut payload).unwrap();
-        self._internal_storage_update(user_id, &list_key, &payload)
+        self._internal_storage_update(user_id, list_key, &payload)
             .await?;
         Ok(())
     }
 
-    async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
+    async fn remove_task_old_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
         let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
-        let latest_key = format!("protocols:{}:{}:latest", task.protocol_name, task.status);
+        self.remove_task_from_list_in_storage(user_id, task, &list_key)
+            .await?;
+        let list_key = format!("tasks:status:{}", task.status);
+        self.remove_task_from_list_in_storage(user_id, task, &list_key)
+            .await?;
+        Ok(())
+    }
+
+    async fn add_task_to_list_in_storage(
+        &self,
+        user_id: &str,
+        task: &Task,
+        list_key: &str,
+    ) -> Result<(), Status> {
+        let latest_key = format!("{}:latest", list_key);
         let mut payload = vec![];
         Task {
             task_id: task.task_id.clone(),
@@ -367,8 +385,8 @@ impl crate::server::MyService {
         let key_path = self
             ._internal_storage_update(user_id, &latest_key, &payload)
             .await?;
-        let mut list = if self._internal_storage_contains(user_id, &list_key).await? {
-            let list = self._internal_storage_read(user_id, &list_key).await?;
+        let mut list = if self._internal_storage_contains(user_id, list_key).await? {
+            let list = self._internal_storage_read(user_id, list_key).await?;
             Message::decode(&*list).unwrap()
         } else {
             CoLinkInternalTaskIdList {
@@ -382,7 +400,17 @@ impl crate::server::MyService {
             });
         payload = vec![];
         list.encode(&mut payload).unwrap();
-        self._internal_storage_update(user_id, &list_key, &payload)
+        self._internal_storage_update(user_id, list_key, &payload)
+            .await?;
+        Ok(())
+    }
+
+    async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
+        let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
+        self.add_task_to_list_in_storage(user_id, task, &list_key)
+            .await?;
+        let list_key = format!("tasks:status:{}", task.status);
+        self.add_task_to_list_in_storage(user_id, task, &list_key)
             .await?;
         Ok(())
     }
