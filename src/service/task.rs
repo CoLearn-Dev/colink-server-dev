@@ -332,7 +332,7 @@ impl crate::server::MyService {
         Ok(Response::new(Empty::default()))
     }
 
-    async fn remove_task_from_list(
+    async fn remove_task_from_list_in_storage(
         &self,
         user_id: &str,
         task: &Task,
@@ -360,13 +360,15 @@ impl crate::server::MyService {
 
     async fn remove_task_old_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
         let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
-        self.remove_task_from_list(user_id, task, &list_key).await?;
+        self.remove_task_from_list_in_storage(user_id, task, &list_key)
+            .await?;
         let list_key = format!("tasks:status:{}", task.status);
-        self.remove_task_from_list(user_id, task, &list_key).await?;
+        self.remove_task_from_list_in_storage(user_id, task, &list_key)
+            .await?;
         Ok(())
     }
 
-    async fn add_task_to_list(
+    async fn add_task_to_list_in_storage(
         &self,
         user_id: &str,
         task: &Task,
@@ -405,9 +407,11 @@ impl crate::server::MyService {
 
     async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
         let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
-        self.add_task_to_list(user_id, task, &list_key).await?;
+        self.add_task_to_list_in_storage(user_id, task, &list_key)
+            .await?;
         let list_key = format!("tasks:status:{}", task.status);
-        self.add_task_to_list(user_id, task, &list_key).await?;
+        self.add_task_to_list_in_storage(user_id, task, &list_key)
+            .await?;
         Ok(())
     }
 
