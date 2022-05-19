@@ -359,7 +359,18 @@ impl crate::server::MyService {
     }
 
     async fn remove_task_old_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
-        let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
+        let protocol_key = if task.status != "started" {
+            task.protocol_name.clone()
+        } else {
+            let mut ptype = "";
+            for p in &task.participants {
+                if p.user_id == user_id {
+                    ptype = &p.ptype;
+                }
+            }
+            format!("{}:{}", task.protocol_name, ptype)
+        };
+        let list_key = format!("protocols:{}:{}", protocol_key, task.status);
         self.remove_task_from_list_in_storage(user_id, task, &list_key)
             .await?;
         let list_key = format!("tasks:status:{}", task.status);
@@ -406,7 +417,18 @@ impl crate::server::MyService {
     }
 
     async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
-        let list_key = format!("protocols:{}:{}", task.protocol_name, task.status);
+        let protocol_key = if task.status != "started" {
+            task.protocol_name.clone()
+        } else {
+            let mut ptype = "";
+            for p in &task.participants {
+                if p.user_id == user_id {
+                    ptype = &p.ptype;
+                }
+            }
+            format!("{}:{}", task.protocol_name, ptype)
+        };
+        let list_key = format!("protocols:{}:{}", protocol_key, task.status);
         self.add_task_to_list_in_storage(user_id, task, &list_key)
             .await?;
         let list_key = format!("tasks:status:{}", task.status);
