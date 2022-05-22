@@ -189,7 +189,7 @@ impl crate::server::MyService {
 
 pub fn generate_request<T>(jwt: &str, data: T) -> tonic::Request<T> {
     let mut request = tonic::Request::new(data);
-    let user_token = MetadataValue::from_str(jwt).unwrap();
+    let user_token = MetadataValue::try_from(jwt).unwrap();
     request.metadata_mut().insert("authorization", user_token);
     request
 }

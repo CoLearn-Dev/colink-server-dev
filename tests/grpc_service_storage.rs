@@ -14,7 +14,7 @@ use tonic::{Response, Status};
 
 async fn generate_request<T>(jwt: &str, data: T) -> tonic::Request<T> {
     let mut request = tonic::Request::new(data);
-    let user_token = MetadataValue::from_str(jwt).unwrap();
+    let user_token = MetadataValue::try_from(jwt).unwrap();
     request.metadata_mut().insert("authorization", user_token);
     request
 }
@@ -41,7 +41,7 @@ async fn send_import_user_request(
     });
 
     let token = std::fs::read_to_string("admin_token.txt").unwrap();
-    let token = MetadataValue::from_str(&token).unwrap();
+    let token = MetadataValue::try_from(&token).unwrap();
     request.metadata_mut().insert("authorization", token);
     let response = client.import_user(request).await;
     response
