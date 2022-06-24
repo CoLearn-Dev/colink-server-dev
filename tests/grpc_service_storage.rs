@@ -71,6 +71,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
+        false,
     ));
     loop {
         if std::fs::metadata("admin_token.txt").is_ok()

@@ -2,5 +2,6 @@
 /.idea
 /.vscode
 admin_token.txt
+init_state.bin
 /tests/sdk-a/
 /tests/sdk-p/

@@ -167,7 +167,7 @@ pub fn gen_jwt() -> [u8; 32] {
 }
 
 pub fn get_admin_token(jwt_secret: [u8; 32]) -> String {
-    let exp = chrono::Utc::now() + chrono::Duration::hours(48);
+    let exp = chrono::Utc::now() + chrono::Duration::days(31);
     let auth_content = AuthContent {
         role: "admin".to_string(),
         user_id: "_admin".to_string(),

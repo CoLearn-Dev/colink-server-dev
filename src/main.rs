@@ -53,6 +53,10 @@ struct CommandLineArgs {
     /// Path to private key you want to use in inter-core communication.
     #[structopt(long, parse(from_os_str))]
     inter_core_key: Option<PathBuf>,
+
+    /// Enforce the generation of the new initial state.
+    #[structopt(long)]
+    force_gen_init_state: bool,
 }
 
 #[tokio::main]
@@ -71,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_ca,
         inter_core_cert,
         inter_core_key,
+        force_gen_init_state,
     } = CommandLineArgs::from_args();
 
     init_and_run_server(
@@ -85,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_ca,
         inter_core_cert,
         inter_core_key,
+        force_gen_init_state,
     )
     .await;
 
