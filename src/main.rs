@@ -54,9 +54,13 @@ struct CommandLineArgs {
     #[structopt(long, parse(from_os_str))]
     inter_core_key: Option<PathBuf>,
 
-    /// Enforce the generation of the new initial state.
+    /// Enforce the generation of the new jwt secret.
     #[structopt(long)]
-    force_gen_init_state: bool,
+    force_gen_jwt_secret: bool,
+
+    /// Enforce the generation of the private key.
+    #[structopt(long)]
+    force_gen_priv_key: bool,
 }
 
 #[tokio::main]
@@ -75,7 +79,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_ca,
         inter_core_cert,
         inter_core_key,
-        force_gen_init_state,
+        force_gen_jwt_secret,
+        force_gen_priv_key,
     } = CommandLineArgs::from_args();
 
     init_and_run_server(
@@ -90,7 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_ca,
         inter_core_cert,
         inter_core_key,
-        force_gen_init_state,
+        force_gen_jwt_secret,
+        force_gen_priv_key,
     )
     .await;
 

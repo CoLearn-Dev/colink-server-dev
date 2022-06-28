@@ -158,7 +158,7 @@ impl Interceptor for CheckAuthInterceptor {
     }
 }
 
-pub fn gen_jwt() -> [u8; 32] {
+pub fn gen_jwt_secret() -> [u8; 32] {
     let mut jwt_secret: [u8; 32] = [0; 32];
     let mut rng = rand::thread_rng();
     rng.fill_bytes(&mut jwt_secret);

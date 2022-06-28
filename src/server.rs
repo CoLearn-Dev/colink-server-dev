@@ -1,28 +1,19 @@
 use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
 use crate::mq::{common::MQ, rabbitmq::RabbitMQ};
-use crate::service::auth::{gen_jwt, print_admin_token, CheckAuthInterceptor};
+use crate::service::auth::{gen_jwt_secret, print_admin_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use secp256k1::Secp256k1;
-use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tonic::{
     transport::{Certificate, Identity, Server, ServerTlsConfig},
     Request, Response, Status,
 };
 use tracing::error;
-
-#[derive(Serialize, Deserialize)]
-struct InitState {
-    jwt_secret: Vec<u8>,
-    public_key: Vec<u8>,
-    secret_key: Vec<u8>,
-}
 
 pub struct MyService {
     pub storage: Box<dyn StorageWithSubscription>,
@@ -138,7 +129,8 @@ pub async fn init_and_run_server(
     inter_core_ca: Option<PathBuf>,
     inter_core_cert: Option<PathBuf>,
     inter_core_key: Option<PathBuf>,
-    force_gen_init_state: bool,
+    force_gen_jwt_secret: bool,
+    force_gen_core_cert: bool,
 ) {
     let socket_address = format!("{}:{}", address, port).parse().unwrap();
     match run_server(
@@ -152,7 +144,8 @@ pub async fn init_and_run_server(
         inter_core_ca,
         inter_core_cert,
         inter_core_key,
-        force_gen_init_state,
+        force_gen_jwt_secret,
+        force_gen_core_cert,
     )
     .await
     {
@@ -176,37 +169,33 @@ async fn run_server(
     inter_core_ca: Option<PathBuf>,
     inter_core_cert: Option<PathBuf>,
     inter_core_key: Option<PathBuf>,
-    force_gen_init_state: bool,
+    force_gen_jwt_secret: bool,
+    force_gen_priv_key: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (jwt_secret, core_secret_key, core_public_key) =
-        if tokio::fs::metadata("init_state.bin").await.is_ok() && !force_gen_init_state {
-            let mut file = File::open("init_state.bin").await?;
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).await?;
-            let init_state: InitState = bincode::deserialize(&buffer)?;
-            let jwt_secret = <[u8; 32]>::try_from(init_state.jwt_secret).unwrap();
-            if tokio::fs::metadata("admin_token.txt").await.is_err() {
-                tokio::spawn(print_admin_token(jwt_secret));
-            }
-            let core_secret_key = secp256k1::SecretKey::from_slice(&init_state.secret_key)?;
-            let core_public_key = secp256k1::PublicKey::from_slice(&init_state.public_key)?;
-            (jwt_secret, core_secret_key, core_public_key)
-        } else {
-            let jwt_secret = gen_jwt();
-            tokio::spawn(print_admin_token(jwt_secret));
-            let secp = Secp256k1::new();
-            let (core_secret_key, core_public_key) =
-                secp.generate_keypair(&mut secp256k1::rand::thread_rng());
-            let init_state = InitState {
-                jwt_secret: jwt_secret.to_vec(),
-                public_key: core_public_key.serialize().to_vec(),
-                secret_key: core_secret_key.serialize_secret().to_vec(),
-            };
-            let init_state = bincode::serialize(&init_state)?;
-            let mut file = File::create("init_state.bin").await?;
-            file.write_all(&init_state).await?;
-            (jwt_secret, core_secret_key, core_public_key)
-        };
+    std::fs::create_dir_all("init_state")?;
+    if force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret").is_err() {
+        let jwt_secret = gen_jwt_secret();
+        let mut file = std::fs::File::create("init_state/jwt_secret")?;
+        file.write_all(hex::encode(&jwt_secret).as_bytes())?;
+    }
+    if force_gen_priv_key || std::fs::metadata("init_state/priv_key").is_err() {
+        let secp = Secp256k1::new();
+        let (core_secret_key, _core_public_key) =
+            secp.generate_keypair(&mut secp256k1::rand::thread_rng());
+        let mut file = std::fs::File::create("init_state/priv_key")?;
+        file.write_all(hex::encode(&core_secret_key.serialize_secret()).as_bytes())?;
+    }
+    let mut file = std::fs::File::open("init_state/jwt_secret")?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    let jwt_secret = <[u8; 32]>::try_from(hex::decode(&buffer)?).unwrap();
+    tokio::spawn(print_admin_token(jwt_secret));
+    file = std::fs::File::open("init_state/priv_key")?;
+    buffer.clear();
+    file.read_to_end(&mut buffer)?;
+    let core_secret_key = secp256k1::SecretKey::from_slice(&hex::decode(&buffer)?)?;
+    let core_public_key =
+        secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::new(BasicStorage::new()),
