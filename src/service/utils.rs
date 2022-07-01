@@ -51,22 +51,22 @@ impl crate::server::MyService {
         Ok(client)
     }
 
-    pub fn check_admin_token(request_metadata: &MetadataMap) -> Result<(), Status> {
+    pub fn check_host_token(request_metadata: &MetadataMap) -> Result<(), Status> {
         let role = request_metadata.get("role").unwrap().to_str().unwrap();
-        if role != "admin" {
+        if role != "host" {
             Err(Status::permission_denied(
-                "This procedure requires an admin token, which you did not provide.",
+                "This procedure requires an host token, which you did not provide.",
             ))
         } else {
             Ok(())
         }
     }
 
-    pub fn check_user_or_admin_token(request_metadata: &MetadataMap) -> Result<(), Status> {
+    pub fn check_user_or_host_token(request_metadata: &MetadataMap) -> Result<(), Status> {
         let role = request_metadata.get("role").unwrap().to_str().unwrap();
-        if role != "admin" && role != "user" {
+        if role != "host" && role != "user" {
             Err(Status::permission_denied(
-                "This procedure needs an admin or user token, which you did not provide.",
+                "This procedure needs an host or user token, which you did not provide.",
             ))
         } else {
             Ok(())
@@ -77,7 +77,7 @@ impl crate::server::MyService {
         let role = request_metadata.get("role").unwrap().to_str().unwrap();
         if role != "user" {
             Err(Status::permission_denied(
-                "This procedure needs an admin or user token, which you did not provide.",
+                "This procedure needs an host or user token, which you did not provide.",
             ))
         } else {
             Ok(())

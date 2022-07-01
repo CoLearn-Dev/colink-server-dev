@@ -58,7 +58,7 @@ struct CommandLineArgs {
     #[structopt(long)]
     force_gen_jwt_secret: bool,
 
-    /// Enforce the generation of the private key.
+    /// Enforce the generation of the core's private key.
     #[structopt(long)]
     force_gen_priv_key: bool,
 }

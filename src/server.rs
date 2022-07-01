@@ -1,7 +1,7 @@
 use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
 use crate::mq::{common::MQ, rabbitmq::RabbitMQ};
-use crate::service::auth::{gen_jwt_secret, print_admin_token, CheckAuthInterceptor};
+use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use secp256k1::Secp256k1;
@@ -173,24 +173,24 @@ async fn run_server(
     force_gen_priv_key: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all("init_state")?;
-    if force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret").is_err() {
+    if force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret.txt").is_err() {
         let jwt_secret = gen_jwt_secret();
-        let mut file = std::fs::File::create("init_state/jwt_secret")?;
+        let mut file = std::fs::File::create("init_state/jwt_secret.txt")?;
         file.write_all(hex::encode(&jwt_secret).as_bytes())?;
     }
-    if force_gen_priv_key || std::fs::metadata("init_state/priv_key").is_err() {
+    if force_gen_priv_key || std::fs::metadata("init_state/priv_key.txt").is_err() {
         let secp = Secp256k1::new();
         let (core_secret_key, _core_public_key) =
             secp.generate_keypair(&mut secp256k1::rand::thread_rng());
-        let mut file = std::fs::File::create("init_state/priv_key")?;
+        let mut file = std::fs::File::create("init_state/priv_key.txt")?;
         file.write_all(hex::encode(&core_secret_key.serialize_secret()).as_bytes())?;
     }
-    let mut file = std::fs::File::open("init_state/jwt_secret")?;
+    let mut file = std::fs::File::open("init_state/jwt_secret.txt")?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     let jwt_secret = <[u8; 32]>::try_from(hex::decode(&buffer)?).unwrap();
-    tokio::spawn(print_admin_token(jwt_secret));
-    file = std::fs::File::open("init_state/priv_key")?;
+    tokio::spawn(print_host_token(jwt_secret));
+    file = std::fs::File::open("init_state/priv_key.txt")?;
     buffer.clear();
     file.read_to_end(&mut buffer)?;
     let core_secret_key = secp256k1::SecretKey::from_slice(&hex::decode(&buffer)?)?;
