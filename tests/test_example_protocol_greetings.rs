@@ -24,7 +24,7 @@ fn test_main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     build();
     for i in 0..11 {
-        test_greetings(10000 + i, USER_NUM[i as usize])?;
+        test_greetings(12300 + i, USER_NUM[i as usize])?;
     }
     Ok(())
 }
@@ -39,12 +39,12 @@ fn test_greetings(port: u16, user_num: usize) -> Result<(), Box<dyn std::error::
         CORE_ADDR,
         port
     );
-    if std::fs::metadata("admin_token.txt").is_ok() {
-        std::fs::remove_file("admin_token.txt")?;
+    if std::fs::metadata("host_token.txt").is_ok() {
+        std::fs::remove_file("host_token.txt")?;
     }
     child_processes.push(KilledWhenDrop(start_core(port)));
     loop {
-        if std::fs::metadata("admin_token.txt").is_ok()
+        if std::fs::metadata("host_token.txt").is_ok()
             && TcpStream::connect(&format!("{}:{}", CORE_ADDR, port)).is_ok()
         {
             break;
@@ -52,9 +52,8 @@ fn test_greetings(port: u16, user_num: usize) -> Result<(), Box<dyn std::error::
         std::thread::sleep(core::time::Duration::from_millis(100));
     }
 
-    let admin_token: String =
-        String::from_utf8_lossy(&std::fs::read("admin_token.txt")?).parse()?;
-    let users = admin_import_users_and_exchange_guest_jwts(&addr, &admin_token, user_num);
+    let host_token: String = String::from_utf8_lossy(&std::fs::read("host_token.txt")?).parse()?;
+    let users = host_import_users_and_exchange_guest_jwts(&addr, &host_token, user_num);
     debug!("users:{:?}", users);
     assert!(users.len() == user_num);
     let start_time = chrono::Utc::now().timestamp_nanos();
@@ -174,12 +173,12 @@ fn build() {
     sdk_p.wait().unwrap();
 }
 
-fn admin_import_users_and_exchange_guest_jwts(addr: &str, jwt: &str, num: usize) -> Vec<String> {
+fn host_import_users_and_exchange_guest_jwts(addr: &str, jwt: &str, num: usize) -> Vec<String> {
     let res = Command::new("cargo")
         .args([
             "run",
             "--example",
-            "admin_import_users_and_exchange_guest_jwts",
+            "host_import_users_and_exchange_guest_jwts",
             addr,
             jwt,
             &num.to_string(),

@@ -56,7 +56,7 @@ impl crate::server::MyService {
         &self,
         request: Request<UserConsent>,
     ) -> Result<Response<Jwt>, Status> {
-        Self::check_admin_token(request.metadata())?;
+        Self::check_host_token(request.metadata())?;
         let body: UserConsent = request.into_inner();
         let user_consent_to_be_stored: UserConsent = body.clone();
         let user_consent_to_be_checked: UserConsent = body.clone();
@@ -158,7 +158,7 @@ impl Interceptor for CheckAuthInterceptor {
     }
 }
 
-pub fn gen_jwt() -> [u8; 32] {
+pub fn gen_jwt_secret() -> [u8; 32] {
     let mut jwt_secret: [u8; 32] = [0; 32];
     let mut rng = rand::thread_rng();
     rng.fill_bytes(&mut jwt_secret);
@@ -166,11 +166,11 @@ pub fn gen_jwt() -> [u8; 32] {
     jwt_secret
 }
 
-pub fn get_admin_token(jwt_secret: [u8; 32]) -> String {
-    let exp = chrono::Utc::now() + chrono::Duration::hours(48);
+pub fn get_host_token(jwt_secret: [u8; 32]) -> String {
+    let exp = chrono::Utc::now() + chrono::Duration::days(31);
     let auth_content = AuthContent {
-        role: "admin".to_string(),
-        user_id: "_admin".to_string(),
+        role: "host".to_string(),
+        user_id: "_host".to_string(),
         exp: exp.timestamp(),
     };
     jsonwebtoken::encode(
@@ -181,9 +181,9 @@ pub fn get_admin_token(jwt_secret: [u8; 32]) -> String {
     .unwrap()
 }
 
-pub async fn print_admin_token(jwt_secret: [u8; 32]) {
+pub async fn print_host_token(jwt_secret: [u8; 32]) {
     // This should update every 24 hours in production code, but now we're just writing it to a file.
-    let token = get_admin_token(jwt_secret);
-    std::fs::write("admin_token.txt", token.clone()).unwrap();
+    let token = get_host_token(jwt_secret);
+    std::fs::write("host_token.txt", token.clone()).unwrap();
     debug!("{}", token);
 }

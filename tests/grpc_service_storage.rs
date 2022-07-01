@@ -40,7 +40,7 @@ async fn send_import_user_request(
         signature: signature.serialize_compact().to_vec(),
     });
 
-    let token = std::fs::read_to_string("admin_token.txt").unwrap();
+    let token = std::fs::read_to_string("host_token.txt").unwrap();
     let token = MetadataValue::try_from(&token).unwrap();
     request.metadata_mut().insert("authorization", token);
     let response = client.import_user(request).await;
@@ -51,17 +51,17 @@ async fn send_import_user_request(
 async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     assert!(
-        std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 10000)).is_err(),
+        std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 12300)).is_err(),
         "listen {}:{}: address already in use.",
         "127.0.0.1",
-        10000
+        12300
     );
-    if std::fs::metadata("admin_token.txt").is_ok() {
-        std::fs::remove_file("admin_token.txt")?;
+    if std::fs::metadata("host_token.txt").is_ok() {
+        std::fs::remove_file("host_token.txt")?;
     }
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
-        10000,
+        12300,
         "amqp://guest:guest@localhost:5672".to_string(),
         "http://guest:guest@localhost:15672/api".to_string(),
         "colink-test".to_string(),
@@ -71,10 +71,12 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
+        false,
+        false,
     ));
     loop {
-        if std::fs::metadata("admin_token.txt").is_ok()
-            && std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 10000)).is_ok()
+        if std::fs::metadata("host_token.txt").is_ok()
+            && std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 12300)).is_ok()
         {
             break;
         }
@@ -86,7 +88,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn test_invalid_signature() {
-    let channel = Channel::from_static("http://127.0.0.1:10000")
+    let channel = Channel::from_static("http://127.0.0.1:12300")
         .connect()
         .await
         .unwrap();
@@ -155,7 +157,7 @@ async fn test_invalid_signature() {
 async fn test_storage_crud() {
     // This is hardcoded because it requires a static string,
     // and there's no way to use format! to generate a static string unless using macros.
-    let channel = Channel::from_static("http://127.0.0.1:10000")
+    let channel = Channel::from_static("http://127.0.0.1:12300")
         .connect()
         .await
         .unwrap();
