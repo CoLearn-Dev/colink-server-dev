@@ -31,7 +31,13 @@ impl crate::storage::common::Storage for BasicStorage {
         let key_path_created = format!("{}::{}@{}", user_id, key_name, timestamp);
         let user_id_key_name = format!("{}::{}", user_id, key_name);
         debug!("{}", user_id_key_name);
-        if map.contains_key(&user_id_key_name) {
+        if map.contains_key(&user_id_key_name)
+            && map.contains_key(&format!(
+                "{}@{}",
+                user_id_key_name,
+                String::from_utf8(map.get(&user_id_key_name).unwrap().to_vec()).unwrap()
+            ))
+        {
             return Err(format!("Key name already exists: {}", user_id_key_name));
         }
         map.insert(key_path_created.clone(), value.to_vec());
@@ -65,7 +71,7 @@ impl crate::storage::common::Storage for BasicStorage {
             let value = map.get(key_path);
             match value {
                 Some(v) => result.insert(key_path.clone(), v.clone()),
-                None => return Err(format!("Key not found: {}", key_path)),
+                None => return Err(format!("Key path not found: {}", key_path)),
             };
         }
         Ok(result)
@@ -90,7 +96,7 @@ impl crate::storage::common::Storage for BasicStorage {
             let value = map.get(&key_path);
             match value {
                 Some(v) => result.insert(key_path, v.clone()),
-                None => return Err(format!("Key path not found: {}", key_path)),
+                None => return Err(format!("Entry have been deleted: {}", key_path)),
             };
         }
         Ok(result)
@@ -152,7 +158,17 @@ impl crate::storage::common::Storage for BasicStorage {
         let timestamp = Utc::now().timestamp();
         let mut map = self.map.lock().await;
         let user_id_key_name = format!("{}::{}", user_id, key_name);
-        map.insert(user_id_key_name, timestamp.to_string().into_bytes());
-        Ok(format!("{}::{}@{}", user_id, key_name, timestamp))
+        if map.contains_key(&user_id_key_name)
+            && map.contains_key(&format!(
+                "{}@{}",
+                user_id_key_name,
+                String::from_utf8(map.get(&user_id_key_name).unwrap().to_vec()).unwrap()
+            ))
+        {
+            map.insert(user_id_key_name, timestamp.to_string().into_bytes());
+            Ok(format!("{}::{}@{}", user_id, key_name, timestamp))
+        } else {
+            Err(format!("Key name not found: {}", key_name))
+        }
     }
 }
