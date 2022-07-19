@@ -51,36 +51,17 @@ impl crate::server::MyService {
         Ok(client)
     }
 
-    pub fn check_host_token(request_metadata: &MetadataMap) -> Result<(), Status> {
-        let role = request_metadata.get("role").unwrap().to_str().unwrap();
-        if role != "host" {
-            Err(Status::permission_denied(
-                "This procedure requires an host token, which you did not provide.",
-            ))
-        } else {
+    pub fn check_privilege(
+        request_metadata: &MetadataMap,
+        require_privileges: &[&str],
+    ) -> Result<(), Status> {
+        let privilege = request_metadata.get("privilege").unwrap().to_str().unwrap();
+        if require_privileges.contains(&privilege) {
             Ok(())
-        }
-    }
-
-    pub fn check_user_or_host_token(request_metadata: &MetadataMap) -> Result<(), Status> {
-        let role = request_metadata.get("role").unwrap().to_str().unwrap();
-        if role != "host" && role != "user" {
-            Err(Status::permission_denied(
-                "This procedure needs an host or user token, which you did not provide.",
-            ))
         } else {
-            Ok(())
-        }
-    }
-
-    pub fn check_user_token(request_metadata: &MetadataMap) -> Result<(), Status> {
-        let role = request_metadata.get("role").unwrap().to_str().unwrap();
-        if role != "user" {
             Err(Status::permission_denied(
-                "This procedure needs an host or user token, which you did not provide.",
+                "This procedure requires specific privileges, which you did not provide.",
             ))
-        } else {
-            Ok(())
         }
     }
 

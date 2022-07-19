@@ -8,7 +8,7 @@ impl crate::server::MyService {
     ) -> Result<Response<CoreInfo>, Status> {
         let public_key_vec = self.public_key.serialize().to_vec();
         Ok(Response::new(CoreInfo {
-            mq_uri: match Self::check_user_token(request.metadata()) {
+            mq_uri: match Self::check_privilege(request.metadata(), &["user"]) {
                 Ok(_i) => {
                     let user_id = Self::get_user_id(request.metadata());
                     let mq_uri_bytes = self._internal_storage_read(&user_id, "mq_uri").await?;
