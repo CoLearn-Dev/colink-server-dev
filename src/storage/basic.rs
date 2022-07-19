@@ -64,7 +64,6 @@ impl crate::storage::common::Storage for BasicStorage {
             key_list_set.1.insert(key_path_created.clone());
             map.key_list.insert(keys_directory, key_list_set);
         }
-
         Ok(key_path_created)
     }
 
@@ -151,7 +150,6 @@ impl crate::storage::common::Storage for BasicStorage {
                     .0
                     .remove(&format!("{}@{}", user_id_key_name, old_timestamp));
             }
-
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
         } else {
