@@ -17,9 +17,7 @@ pub trait Storage: Send + Sync {
     /// Inside storage,
     /// - add entry that maps from `{user_id} :: {key_name}` to current timestamp. If it already exists, returns error string.
     /// - add entry that maps from `{user_id} :: {key_name} @ {current timestamp}` to `value`.
-    /// - append this key to `{longest prefix of key_path whose subsequent character is a ':'}:__keys`
     /// Returns the complete key_path of the new entry, which is `{user_id} :: {key_name} @ {current timestamp}`.
-    /// This check for one thing: the token subsequent to the last ':' should not start with two underscores '__'.
     async fn create(&self, user_id: &str, key_name: &str, value: &[u8]) -> Result<String, String>;
 
     /// Read entries in the storage from the given `key_path`s.
@@ -34,7 +32,6 @@ pub trait Storage: Send + Sync {
     ///
     /// # How it works
     /// Just read the entries in the storage.
-    /// This check for one thing: the token subsequent to the last ':' should not start with two underscores '__'.\
     async fn read_from_key_paths(
         &self,
         key_paths: &[String],
@@ -53,7 +50,6 @@ pub trait Storage: Send + Sync {
     /// 2. Return the entry at `{user_id} :: {key_name} @ {latest timestamp}`.
     ///
     /// If an entry is not found, an error is returned.
-    /// This check for one thing: the token subsequent to the last ':' should not start with two underscores '__'.
     async fn read_from_key_names(
         &self,
         user_id: &str,
@@ -89,8 +85,7 @@ pub trait Storage: Send + Sync {
     /// Note that if you want to list all keys possessed by a user, you need to pass in a colon after the user_id.
     ///
     /// # How it works
-    /// Inside storage, `prefix:__keys` points to a vector that contains all the keys that starts with prefix with no colons following.
-    /// So we just return that if `include_history` is false. If `include_history` is true, we find the one with the largest timestamp for each distinct `key_path_prefix` and return them.
+    /// We return all key_paths if `include_history` is false. If `include_history` is true, we find the one with the largest timestamp for each distinct `key_path_prefix` and return them.
     async fn list_keys(&self, prefix: &str, include_history: bool) -> Result<Vec<String>, String>;
 
     /// Updates the value of entry corresponding to `key_path_prefix` to `value`.
@@ -108,7 +103,6 @@ pub trait Storage: Send + Sync {
     /// Inside storage,
     /// - replace entry that maps from `{user_id}::{key_name}` to current timestamp.
     /// - add entry that maps from `{user_id}::{key_name}@{current timestamp}` to `value`.
-    /// - append this key to `{longest prefix of key_path_prefix whose subsequent character is a ':'}:__keys`
     async fn update(&self, user_id: &str, key_name: &str, value: &[u8]) -> Result<String, String>;
 
     /// Updates the value of entry corresponding to `key_path_prefix` to `value`.
@@ -121,23 +115,8 @@ pub trait Storage: Send + Sync {
     /// Notice that this `key_path` is the entire key_path with the `@timestamp` suffix, where the timestamp is the time when the entry is deleted.
     /// # How it works
     /// Inside storage, replace entry that maps from `{user_id}::{key_name}` to current timestamp.
-    /// Doesn't touch the `__keys` vector. Therefore, it's still possible to obtain the entry that just got deleted by calling `list_keys` with `include_history = true`
-    /// and seeking the entry with the latest timestamp.
     /// Now `{user_id}::{key_name}@{current timestamp}` maps to nothing. So during read, we know that a delete operation has occurred.
     async fn delete(&self, user_id: &str, key_name: &str) -> Result<String, String>;
-}
-
-/// Checks if the input key_path contains two underscores '__' following the last colon ':'.
-pub fn ends_with_reserved_tokens(key_path: &str) -> Result<(), String> {
-    let pos = key_path.rfind(':');
-    let pos: usize = match pos {
-        None => 0,
-        Some(pos) => pos + 1,
-    };
-    if key_path[pos..pos + 2] == *"__" {
-        return Err(format!("key_path {} ends with reserved tokens", key_path));
-    }
-    Ok(())
 }
 
 /// Gets the longest prefix of the input string whose final character is a ':'.
