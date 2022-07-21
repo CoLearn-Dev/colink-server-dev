@@ -60,8 +60,8 @@ impl crate::server::MyService {
             Ok(())
         } else {
             Err(Status::permission_denied(format!(
-                "This procedure requires specific privileges[{:?}], which you did not provide.",
-                privileges
+                "This procedure requires specific privileges[{:?}], while you provide[{}].",
+                privileges, privilege
             )))
         }
     }

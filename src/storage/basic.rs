@@ -19,36 +19,36 @@ pub struct BasicStorage {
 #[async_trait::async_trait]
 impl crate::storage::common::Storage for BasicStorage {
     async fn create(&self, user_id: &str, key_name: &str, value: &[u8]) -> Result<String, String> {
-        let mut map = self.maps.write().await;
+        let mut maps = self.maps.write().await;
         let timestamp = Utc::now().timestamp_nanos();
         let key_path_created = format!("{}::{}@{}", user_id, key_name, timestamp);
         let user_id_key_name = format!("{}::{}", user_id, key_name);
         debug!("{}", user_id_key_name);
-        if map.key_name_to_timestamp.contains_key(&user_id_key_name)
-            && map.key_path_to_value.contains_key(&format!(
+        if maps.key_name_to_timestamp.contains_key(&user_id_key_name)
+            && maps.key_path_to_value.contains_key(&format!(
                 "{}@{}",
                 user_id_key_name,
-                map.key_name_to_timestamp.get(&user_id_key_name).unwrap()
+                maps.key_name_to_timestamp.get(&user_id_key_name).unwrap()
             ))
         {
             return Err(format!("Key name already exists: {}", user_id_key_name));
         }
-        map.key_path_to_value
+        maps.key_path_to_value
             .insert(key_path_created.clone(), value.to_vec());
-        map.key_name_to_timestamp
+        maps.key_name_to_timestamp
             .insert(user_id_key_name, timestamp);
         let prefix = get_prefix(key_name);
         let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = map.path_to_key_paths.contains_key(&keys_directory);
+        let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
         if contains_key {
-            let key_list_set = map.path_to_key_paths.get_mut(&keys_directory).unwrap();
+            let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
         } else {
             let mut key_list_set = (HashSet::new(), HashSet::new());
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
-            map.path_to_key_paths.insert(keys_directory, key_list_set);
+            maps.path_to_key_paths.insert(keys_directory, key_list_set);
         }
         Ok(key_path_created)
     }
@@ -57,10 +57,10 @@ impl crate::storage::common::Storage for BasicStorage {
         &self,
         key_paths: &[String],
     ) -> Result<HashMap<String, Vec<u8>>, String> {
-        let map = self.maps.read().await;
+        let maps = self.maps.read().await;
         let mut result = HashMap::new();
         for key_path in key_paths {
-            let value = map.key_path_to_value.get(key_path);
+            let value = maps.key_path_to_value.get(key_path);
             match value {
                 Some(v) => result.insert(key_path.clone(), v.clone()),
                 None => return Err(format!("Key path not found: {}", key_path)),
@@ -74,10 +74,10 @@ impl crate::storage::common::Storage for BasicStorage {
         user_id: &str,
         key_names: &[String],
     ) -> Result<HashMap<String, Vec<u8>>, String> {
-        let map = self.maps.read().await;
+        let maps = self.maps.read().await;
         let mut result = HashMap::new();
         for key_name in key_names {
-            let timestamp = map
+            let timestamp = maps
                 .key_name_to_timestamp
                 .get(&format!("{}::{}", user_id, key_name));
             let timestamp = match timestamp {
@@ -85,7 +85,7 @@ impl crate::storage::common::Storage for BasicStorage {
                 None => return Err(format!("Key name not found: {}", key_name)),
             };
             let key_path = format!("{}::{}@{}", user_id, key_name, timestamp);
-            let value = map.key_path_to_value.get(&key_path);
+            let value = maps.key_path_to_value.get(&key_path);
             match value {
                 Some(v) => result.insert(key_path, v.clone()),
                 None => return Err(format!("Entry have been deleted: {}", key_path)),
@@ -95,8 +95,8 @@ impl crate::storage::common::Storage for BasicStorage {
     }
 
     async fn list_keys(&self, prefix: &str, include_history: bool) -> Result<Vec<String>, String> {
-        let map = self.maps.read().await;
-        let res = map.path_to_key_paths.get(&format!("{}:", prefix));
+        let maps = self.maps.read().await;
+        let res = maps.path_to_key_paths.get(&format!("{}:", prefix));
         Ok(match res {
             None => vec![],
             Some(key_list_set) => {
@@ -110,21 +110,21 @@ impl crate::storage::common::Storage for BasicStorage {
     }
 
     async fn update(&self, user_id: &str, key_name: &str, value: &[u8]) -> Result<String, String> {
-        let mut map = self.maps.write().await;
+        let mut maps = self.maps.write().await;
         let timestamp = Utc::now().timestamp_nanos();
         let key_path_created = format!("{}::{}@{}", user_id, key_name, timestamp);
         let user_id_key_name = format!("{}::{}", user_id, key_name);
-        map.key_path_to_value
+        maps.key_path_to_value
             .insert(key_path_created.clone(), value.to_vec());
-        let old_timestamp = map
+        let old_timestamp = maps
             .key_name_to_timestamp
             .insert(user_id_key_name.clone(), timestamp)
             .unwrap_or(0_i64);
         let prefix = get_prefix(key_name);
         let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = map.path_to_key_paths.contains_key(&keys_directory);
+        let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
         if contains_key {
-            let key_list_set = map.path_to_key_paths.get_mut(&keys_directory).unwrap();
+            let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
             if old_timestamp != 0
                 && key_list_set
                     .0
@@ -140,32 +140,32 @@ impl crate::storage::common::Storage for BasicStorage {
             let mut key_list_set = (HashSet::new(), HashSet::new());
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
-            map.path_to_key_paths.insert(keys_directory, key_list_set);
+            maps.path_to_key_paths.insert(keys_directory, key_list_set);
         }
 
         Ok(key_path_created)
     }
 
     async fn delete(&self, user_id: &str, key_name: &str) -> Result<String, String> {
-        let mut map = self.maps.write().await;
+        let mut maps = self.maps.write().await;
         let timestamp = Utc::now().timestamp();
         let user_id_key_name = format!("{}::{}", user_id, key_name);
-        if map.key_name_to_timestamp.contains_key(&user_id_key_name)
-            && map.key_path_to_value.contains_key(&format!(
+        if maps.key_name_to_timestamp.contains_key(&user_id_key_name)
+            && maps.key_path_to_value.contains_key(&format!(
                 "{}@{}",
                 user_id_key_name,
-                map.key_name_to_timestamp.get(&user_id_key_name).unwrap()
+                maps.key_name_to_timestamp.get(&user_id_key_name).unwrap()
             ))
         {
-            let old_timestamp = map
+            let old_timestamp = maps
                 .key_name_to_timestamp
                 .insert(user_id_key_name.clone(), timestamp)
                 .unwrap_or(0_i64);
             let prefix = get_prefix(key_name);
             let keys_directory = format!("{}::{}", user_id, prefix);
-            let contains_key = map.path_to_key_paths.contains_key(&keys_directory);
+            let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
             if contains_key {
-                let key_list_set = map.path_to_key_paths.get_mut(&keys_directory).unwrap();
+                let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
                 if old_timestamp != 0
                     && key_list_set
                         .0
