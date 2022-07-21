@@ -27,7 +27,7 @@ impl crate::server::MyService {
         request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
         debug!("Got a request: {:?}", request);
-        Self::check_privilege(request.metadata(), &["user"])?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let token = request.metadata().get("authorization").unwrap().clone();
         let token = token.to_str().unwrap();
         let body: GenerateTokenRequest = request.into_inner();
@@ -56,7 +56,7 @@ impl crate::server::MyService {
         &self,
         request: Request<UserConsent>,
     ) -> Result<Response<Jwt>, Status> {
-        Self::check_privilege(request.metadata(), &["host"])?;
+        Self::check_privilege_in(request.metadata(), &["host"])?;
         let body: UserConsent = request.into_inner();
         let user_consent_to_be_stored: UserConsent = body.clone();
         let user_consent_to_be_checked: UserConsent = body.clone();

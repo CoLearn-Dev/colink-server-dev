@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 impl crate::server::MyService {
     pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
-        Self::check_privilege(request.metadata(), &["user"])?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let task_id = Uuid::new_v4();
         let mut task = request.into_inner();
@@ -65,7 +65,7 @@ impl crate::server::MyService {
         &self,
         request: Request<ConfirmTaskRequest>,
     ) -> Result<Response<Empty>, Status> {
-        Self::check_privilege(request.metadata(), &["user"])?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let user_decision = match request.get_ref().decision.clone() {
             Some(user_decision) => user_decision,
@@ -170,7 +170,7 @@ impl crate::server::MyService {
     }
 
     pub async fn _finish_task(&self, request: Request<Task>) -> Result<Response<Empty>, Status> {
-        Self::check_privilege(request.metadata(), &["user"])?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let task_storage_mutex = self.task_storage_mutex.lock().await;
         let task = self
@@ -199,7 +199,7 @@ impl crate::server::MyService {
         &self,
         request: Request<Task>,
     ) -> Result<Response<Empty>, Status> {
-        Self::check_privilege(request.metadata(), &["user", "guest"])?;
+        Self::check_privilege_in(request.metadata(), &["user", "guest"])?;
         let user_id = Self::get_user_id(request.metadata());
         if !self
             ._internal_storage_contains(&user_id, &format!("tasks:{}", request.get_ref().task_id))

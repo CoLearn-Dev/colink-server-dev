@@ -51,17 +51,18 @@ impl crate::server::MyService {
         Ok(client)
     }
 
-    pub fn check_privilege(
+    pub fn check_privilege_in(
         request_metadata: &MetadataMap,
-        require_privileges: &[&str],
+        privileges: &[&str],
     ) -> Result<(), Status> {
         let privilege = request_metadata.get("privilege").unwrap().to_str().unwrap();
-        if require_privileges.contains(&privilege) {
+        if privileges.contains(&privilege) {
             Ok(())
         } else {
-            Err(Status::permission_denied(
-                "This procedure requires specific privileges, which you did not provide.",
-            ))
+            Err(Status::permission_denied(format!(
+                "This procedure requires specific privileges[{:?}], which you did not provide.",
+                privileges
+            )))
         }
     }
 

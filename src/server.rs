@@ -198,7 +198,7 @@ async fn run_server(
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
-            Box::new(BasicStorage::new()),
+            Box::new(BasicStorage::default()),
             Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
         )),
         jwt_secret,
