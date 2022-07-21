@@ -29,11 +29,11 @@ pub struct MyService {
 
 #[tonic::async_trait]
 impl CoLink for MyService {
-    async fn refresh_token(
+    async fn generate_token(
         &self,
-        request: Request<RefreshTokenRequest>,
+        request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
-        self._refresh_token(request).await
+        self._generate_token(request).await
     }
 
     async fn import_user(&self, request: Request<UserConsent>) -> Result<Response<Jwt>, Status> {
@@ -198,7 +198,7 @@ async fn run_server(
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
-            Box::new(BasicStorage::new()),
+            Box::new(BasicStorage::default()),
             Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
         )),
         jwt_secret,

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 impl crate::server::MyService {
     pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
-        Self::check_user_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let task_id = Uuid::new_v4();
         let mut task = request.into_inner();
@@ -65,7 +65,7 @@ impl crate::server::MyService {
         &self,
         request: Request<ConfirmTaskRequest>,
     ) -> Result<Response<Empty>, Status> {
-        Self::check_user_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let user_decision = match request.get_ref().decision.clone() {
             Some(user_decision) => user_decision,
@@ -170,7 +170,7 @@ impl crate::server::MyService {
     }
 
     pub async fn _finish_task(&self, request: Request<Task>) -> Result<Response<Empty>, Status> {
-        Self::check_user_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
         let task_storage_mutex = self.task_storage_mutex.lock().await;
         let task = self
@@ -199,7 +199,7 @@ impl crate::server::MyService {
         &self,
         request: Request<Task>,
     ) -> Result<Response<Empty>, Status> {
-        Self::check_user_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["user", "guest"])?;
         let user_id = Self::get_user_id(request.metadata());
         if !self
             ._internal_storage_contains(&user_id, &format!("tasks:{}", request.get_ref().task_id))
@@ -362,13 +362,13 @@ impl crate::server::MyService {
         let protocol_key = if task.status != "started" {
             task.protocol_name.clone()
         } else {
-            let mut ptype = "";
+            let mut role = "";
             for p in &task.participants {
                 if p.user_id == user_id {
-                    ptype = &p.ptype;
+                    role = &p.role;
                 }
             }
-            format!("{}:{}", task.protocol_name, ptype)
+            format!("{}:{}", task.protocol_name, role)
         };
         let list_key = format!("protocols:{}:{}", protocol_key, task.status);
         self.remove_task_from_list_in_storage(user_id, task, &list_key)
@@ -420,13 +420,13 @@ impl crate::server::MyService {
         let protocol_key = if task.status != "started" {
             task.protocol_name.clone()
         } else {
-            let mut ptype = "";
+            let mut role = "";
             for p in &task.participants {
                 if p.user_id == user_id {
-                    ptype = &p.ptype;
+                    role = &p.role;
                 }
             }
-            format!("{}:{}", task.protocol_name, ptype)
+            format!("{}:{}", task.protocol_name, role)
         };
         let list_key = format!("protocols:{}:{}", protocol_key, task.status);
         self.add_task_to_list_in_storage(user_id, task, &list_key)

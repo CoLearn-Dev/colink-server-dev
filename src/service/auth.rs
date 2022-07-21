@@ -16,21 +16,21 @@ pub struct CheckAuthInterceptor {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthContent {
-    role: String,
+    privilege: String,
     user_id: String,
     exp: i64,
 }
 
 impl crate::server::MyService {
-    pub async fn _refresh_token(
+    pub async fn _generate_token(
         &self,
-        request: Request<RefreshTokenRequest>,
+        request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
         debug!("Got a request: {:?}", request);
-        Self::check_user_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["user"])?;
         let token = request.metadata().get("authorization").unwrap().clone();
         let token = token.to_str().unwrap();
-        let body: RefreshTokenRequest = request.into_inner();
+        let body: GenerateTokenRequest = request.into_inner();
         let token = jsonwebtoken::decode::<AuthContent>(
             token,
             &jsonwebtoken::DecodingKey::from_secret(&self.jwt_secret),
@@ -41,7 +41,7 @@ impl crate::server::MyService {
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &AuthContent {
-                role: token.role,
+                privilege: token.privilege,
                 user_id: token.user_id,
                 exp: body.expiration_time,
             },
@@ -56,7 +56,7 @@ impl crate::server::MyService {
         &self,
         request: Request<UserConsent>,
     ) -> Result<Response<Jwt>, Status> {
-        Self::check_host_token(request.metadata())?;
+        Self::check_privilege_in(request.metadata(), &["host"])?;
         let body: UserConsent = request.into_inner();
         let user_consent_to_be_stored: UserConsent = body.clone();
         let user_consent_to_be_checked: UserConsent = body.clone();
@@ -101,7 +101,7 @@ impl crate::server::MyService {
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &AuthContent {
-                role: "user".to_string(),
+                privilege: "user".to_string(),
                 user_id,
                 exp: expiration_timestamp,
             },
@@ -131,7 +131,7 @@ impl Interceptor for CheckAuthInterceptor {
         if token.is_empty() {
             let mut req = req;
             req.metadata_mut()
-                .insert("role", MetadataValue::from_static("anonymous"));
+                .insert("privilege", MetadataValue::from_static("anonymous"));
             return Ok(req);
         }
         let token = match jsonwebtoken::decode::<AuthContent>(
@@ -150,7 +150,7 @@ impl Interceptor for CheckAuthInterceptor {
 
         let mut req = req;
         req.metadata_mut()
-            .insert("role", token.claims.role.parse().unwrap());
+            .insert("privilege", token.claims.privilege.parse().unwrap());
         req.metadata_mut()
             .insert("user_id", token.claims.user_id.parse().unwrap());
 
@@ -169,7 +169,7 @@ pub fn gen_jwt_secret() -> [u8; 32] {
 pub fn get_host_token(jwt_secret: [u8; 32]) -> String {
     let exp = chrono::Utc::now() + chrono::Duration::days(31);
     let auth_content = AuthContent {
-        role: "host".to_string(),
+        privilege: "host".to_string(),
         user_id: "_host".to_string(),
         exp: exp.timestamp(),
     };
