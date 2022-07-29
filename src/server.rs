@@ -225,6 +225,7 @@ async fn run_server(
     if cert.is_none() || key.is_none() {
         /* No TLS */
         Server::builder()
+            .accept_http1(true)
             .add_service(service)
             .serve(socket_address)
             .await?;
