@@ -154,23 +154,15 @@ fn build() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let mut sdk_a = Command::new("cargo")
+    let mut sdk = Command::new("cargo")
         .args(["build", "--all-targets"])
-        .current_dir("./tests/sdk-a")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let mut sdk_p = Command::new("cargo")
-        .args(["build", "--all-targets"])
-        .current_dir("./tests/sdk-p")
+        .current_dir("./tests/sdk")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
     core.wait().unwrap();
-    sdk_a.wait().unwrap();
-    sdk_p.wait().unwrap();
+    sdk.wait().unwrap();
 }
 
 fn host_import_users_and_exchange_guest_jwts(addr: &str, jwt: &str, num: usize) -> Vec<String> {
@@ -183,7 +175,7 @@ fn host_import_users_and_exchange_guest_jwts(addr: &str, jwt: &str, num: usize) 
             jwt,
             &num.to_string(),
         ])
-        .current_dir("./tests/sdk-a")
+        .current_dir("./tests/sdk")
         .output()
         .unwrap();
     debug!(
@@ -201,7 +193,7 @@ fn host_import_users_and_exchange_guest_jwts(addr: &str, jwt: &str, num: usize) 
 fn user_run_task(addr: &str, jwt_a: &str, jwt_b: &str, msg: &str) -> Child {
     Command::new("cargo")
         .args(["run", "--example", "user_run_task", addr, jwt_a, jwt_b, msg])
-        .current_dir("./tests/sdk-a")
+        .current_dir("./tests/sdk")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -215,7 +207,7 @@ fn user_greetings_to_multiple_users(addr: &str, jwts: &[String]) -> Child {
     }
     Command::new("cargo")
         .args(&args)
-        .current_dir("./tests/sdk-a")
+        .current_dir("./tests/sdk")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -225,7 +217,7 @@ fn user_greetings_to_multiple_users(addr: &str, jwts: &[String]) -> Child {
 fn run_auto_confirm(addr: &str, jwt: &str, protocol_name: &str) -> Child {
     Command::new("cargo")
         .args(["run", "--example", "auto_confirm", addr, jwt, protocol_name])
-        .current_dir("./tests/sdk-a")
+        .current_dir("./tests/sdk")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -244,7 +236,7 @@ fn run_protocol_greetings(addr: &str, jwt: &str) -> Child {
             "--jwt",
             jwt,
         ])
-        .current_dir("./tests/sdk-p")
+        .current_dir("./tests/sdk")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -261,7 +253,7 @@ fn get_next_greeting_message(addr: &str, jwt: &str, now: i64) -> String {
             jwt,
             &now.to_string(),
         ])
-        .current_dir("./tests/sdk-a")
+        .current_dir("./tests/sdk")
         .output()
         .unwrap();
     let mut msg = String::from_utf8_lossy(&res.stdout).to_string();
