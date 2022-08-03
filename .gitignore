@@ -3,5 +3,3 @@
 /.vscode
 host_token.txt
 /init_state
-/tests/sdk-a/
-/tests/sdk-p/

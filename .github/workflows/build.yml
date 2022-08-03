@@ -31,11 +31,6 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy test
         run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
-      - name: Pull and Build SDK
-        env:
-          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
-        run: bash pull-and-build-sdk.sh
-        working-directory: tests
       - name: Run tests
         run: cargo test
         timeout-minutes: 10
