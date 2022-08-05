@@ -1,10 +1,15 @@
 use super::utils::*;
 use crate::colink_proto::*;
+pub use colink_registry_proto::UserRecord;
 use openssl::sha::sha256;
 use prost::Message;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
+
+mod colink_registry_proto {
+    include!(concat!(env!("OUT_DIR"), "/colink_registry.rs"));
+}
 
 impl crate::server::MyService {
     pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
@@ -28,6 +33,8 @@ impl crate::server::MyService {
         self._internal_storage_update(&user_id, &format!("tasks:{}", task_id), &payload)
             .await?;
         for i in 1..task.participants.len() {
+            self.query_registries(&user_id, &task.participants[i].user_id)
+                .await?;
             let core_addr = self
                 ._internal_storage_read(
                     &user_id,
@@ -136,6 +143,8 @@ impl crate::server::MyService {
         drop(task_storage_mutex);
 
         if task.require_agreement && user_status != "ignored" {
+            self.query_registries(&user_id, &task.participants[0].user_id)
+                .await?;
             let core_addr = self
                 ._internal_storage_read(
                     &user_id,
@@ -304,6 +313,8 @@ impl crate::server::MyService {
                 // The initiator should broadcast the status change.
                 if task.participants[0].user_id == user_id && task.participants.len() > 2 {
                     for i in 1..task.participants.len() {
+                        self.query_registries(&user_id, &task.participants[i].user_id)
+                            .await?;
                         let core_addr = self
                             ._internal_storage_read(
                                 &user_id,
@@ -434,6 +445,70 @@ impl crate::server::MyService {
         let list_key = format!("tasks:status:{}", task.status);
         self.add_task_to_list_in_storage(user_id, task, &list_key)
             .await?;
+        Ok(())
+    }
+
+    async fn query_registries(&self, user_id: &str, query_user_id: &str) -> Result<(), Status> {
+        let mut counter = 0;
+        while self
+            ._internal_storage_read(
+                user_id,
+                &format!("known_users:{}:core_addr", &query_user_id),
+            )
+            .await
+            .is_err()
+            || self
+                ._internal_storage_read(
+                    user_id,
+                    &format!("known_users:{}:guest_jwt", &query_user_id),
+                )
+                .await
+                .is_err()
+        {
+            if counter == 0 {
+                let user = UserRecord {
+                    user_id: query_user_id.to_string(),
+                    ..Default::default()
+                };
+                let mut payload = vec![];
+                user.encode(&mut payload).unwrap();
+                let mut local_task = Task {
+                    task_id: Uuid::new_v4().to_string(),
+                    protocol_name: "registry".to_string(),
+                    protocol_param: payload,
+                    participants: vec![Participant {
+                        user_id: user_id.to_string(),
+                        role: "query".to_string(),
+                    }],
+                    require_agreement: false,
+                    status: "started".to_string(),
+                    expiration_time: chrono::Utc::now().timestamp() + 86400,
+                    ..Default::default()
+                };
+                local_task
+                    .decisions
+                    .resize(local_task.participants.len(), Default::default());
+                local_task.decisions[0] = self
+                    .generate_decision(true, false, "", user_id, &local_task)
+                    .await?;
+                let mut payload = vec![];
+                local_task.encode(&mut payload).unwrap();
+                self._internal_storage_update(
+                    user_id,
+                    &format!("tasks:{}", local_task.task_id),
+                    &payload,
+                )
+                .await?;
+                let task_storage_mutex = self.task_storage_mutex.lock().await;
+                self.add_task_new_status(user_id, &local_task).await?;
+                drop(task_storage_mutex);
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            counter += 1;
+            if counter > 12 {
+                break;
+            }
+        }
         Ok(())
     }
 
