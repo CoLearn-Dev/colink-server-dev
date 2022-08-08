@@ -33,26 +33,13 @@ impl crate::server::MyService {
         self._internal_storage_update(&user_id, &format!("tasks:{}", task_id), &payload)
             .await?;
         for i in 1..task.participants.len() {
-            self.query_registries(&user_id, &task.participants[i].user_id)
+            let (core_addr, guest_jwt) = self
+                .query_user_record(&user_id, &task.participants[i].user_id)
                 .await?;
-            let core_addr = self
-                ._internal_storage_read(
-                    &user_id,
-                    &format!("known_users:{}:core_addr", &task.participants[i].user_id),
-                )
-                .await?;
-            let core_addr = String::from_utf8(core_addr).unwrap();
             let mut client = match self._grpc_connect(&core_addr).await {
                 Ok(client) => client,
                 Err(e) => return Err(Status::internal(format!("{}", e))),
             };
-            let guest_jwt = self
-                ._internal_storage_read(
-                    &user_id,
-                    &format!("known_users:{}:guest_jwt", &task.participants[i].user_id),
-                )
-                .await?;
-            let guest_jwt = String::from_utf8(guest_jwt).unwrap();
             client
                 .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
                 .await?;
@@ -143,26 +130,13 @@ impl crate::server::MyService {
         drop(task_storage_mutex);
 
         if task.require_agreement && user_status != "ignored" {
-            self.query_registries(&user_id, &task.participants[0].user_id)
+            let (core_addr, guest_jwt) = self
+                .query_user_record(&user_id, &task.participants[0].user_id)
                 .await?;
-            let core_addr = self
-                ._internal_storage_read(
-                    &user_id,
-                    &format!("known_users:{}:core_addr", &task.participants[0].user_id),
-                )
-                .await?;
-            let core_addr = String::from_utf8(core_addr).unwrap();
             let mut client = match self._grpc_connect(&core_addr).await {
                 Ok(client) => client,
                 Err(e) => return Err(Status::internal(format!("{}", e))),
             };
-            let guest_jwt = self
-                ._internal_storage_read(
-                    &user_id,
-                    &format!("known_users:{}:guest_jwt", &task.participants[0].user_id),
-                )
-                .await?;
-            let guest_jwt = String::from_utf8(guest_jwt).unwrap();
             client
                 .inter_core_sync_task(generate_request(
                     &guest_jwt,
@@ -313,26 +287,13 @@ impl crate::server::MyService {
                 // The initiator should broadcast the status change.
                 if task.participants[0].user_id == user_id && task.participants.len() > 2 {
                     for i in 1..task.participants.len() {
-                        self.query_registries(&user_id, &task.participants[i].user_id)
+                        let (core_addr, guest_jwt) = self
+                            .query_user_record(&user_id, &task.participants[i].user_id)
                             .await?;
-                        let core_addr = self
-                            ._internal_storage_read(
-                                &user_id,
-                                &format!("known_users:{}:core_addr", &task.participants[i].user_id),
-                            )
-                            .await?;
-                        let core_addr = String::from_utf8(core_addr).unwrap();
                         let mut client = match self._grpc_connect(&core_addr).await {
                             Ok(client) => client,
                             Err(e) => return Err(Status::internal(format!("{}", e))),
                         };
-                        let guest_jwt = self
-                            ._internal_storage_read(
-                                &user_id,
-                                &format!("known_users:{}:guest_jwt", &task.participants[i].user_id),
-                            )
-                            .await?;
-                        let guest_jwt = String::from_utf8(guest_jwt).unwrap();
                         client
                             .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
                             .await?;
@@ -448,7 +409,11 @@ impl crate::server::MyService {
         Ok(())
     }
 
-    async fn query_registries(&self, user_id: &str, query_user_id: &str) -> Result<(), Status> {
+    async fn query_user_record(
+        &self,
+        user_id: &str,
+        query_user_id: &str,
+    ) -> Result<(String, String), Status> {
         let mut counter = 0;
         while self
             ._internal_storage_read(
@@ -503,13 +468,28 @@ impl crate::server::MyService {
                 self.add_task_new_status(user_id, &local_task).await?;
                 drop(task_storage_mutex);
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            // We choose 1 second as the retry interval and retry 30 times.
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             counter += 1;
-            if counter > 12 {
+            if counter > 30 {
                 break;
             }
         }
-        Ok(())
+        let core_addr = self
+            ._internal_storage_read(
+                user_id,
+                &format!("known_users:{}:core_addr", &query_user_id),
+            )
+            .await?;
+        let core_addr = String::from_utf8(core_addr).unwrap();
+        let guest_jwt = self
+            ._internal_storage_read(
+                user_id,
+                &format!("known_users:{}:guest_jwt", &query_user_id),
+            )
+            .await?;
+        let guest_jwt = String::from_utf8(guest_jwt).unwrap();
+        Ok((core_addr, guest_jwt))
     }
 
     /**
