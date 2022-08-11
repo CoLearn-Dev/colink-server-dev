@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "colink-server"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -429,6 +429,7 @@ dependencies = [
  "openssl",
  "passwords",
  "prost",
+ "prost-build",
  "rand 0.8.5",
  "reqwest",
  "secp256k1",
