@@ -443,7 +443,7 @@ impl crate::server::MyService {
                     protocol_param: payload,
                     participants: vec![Participant {
                         user_id: user_id.to_string(),
-                        role: "query".to_string(),
+                        role: "query_from_registries".to_string(),
                     }],
                     require_agreement: false,
                     status: "started".to_string(),
@@ -468,10 +468,10 @@ impl crate::server::MyService {
                 self.add_task_new_status(user_id, &local_task).await?;
                 drop(task_storage_mutex);
             }
-            // We choose 1 second as the retry interval and retry 30 times.
+            // We choose 1 second as the retry interval and retry 60 times.
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             counter += 1;
-            if counter > 30 {
+            if counter > 60 {
                 break;
             }
         }
