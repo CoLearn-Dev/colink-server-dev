@@ -1,3 +1,4 @@
+#![feature(map_try_insert)]
 pub mod mq;
 pub mod server;
 pub mod service;

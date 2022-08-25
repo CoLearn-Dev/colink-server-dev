@@ -4,6 +4,7 @@ pub use colink_registry_proto::UserRecord;
 use openssl::sha::sha256;
 use prost::Message;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
@@ -45,7 +46,10 @@ impl crate::server::MyService {
                 .await?;
         }
 
-        let task_storage_mutex = self.task_storage_mutex.lock().await;
+        let task_storage_mutex = self
+            .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, task.task_id))
+            .lock()
+            .await; //self.task_storage_mutex.lock().await;
         self.add_task_new_status(&user_id, &task).await?;
         drop(task_storage_mutex);
 
@@ -78,7 +82,10 @@ impl crate::server::MyService {
         } else {
             return Err(Status::invalid_argument("Invalid decision.".to_string()));
         };
-        let task_storage_mutex = self.task_storage_mutex.lock().await;
+        let task_storage_mutex = self
+            .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, request.get_ref().task_id))
+            .lock()
+            .await; //self.task_storage_mutex.lock().await;
         let task = self
             ._internal_storage_read(&user_id, &format!("tasks:{}", request.get_ref().task_id))
             .await?;
@@ -155,7 +162,10 @@ impl crate::server::MyService {
     pub async fn _finish_task(&self, request: Request<Task>) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_user_id(request.metadata());
-        let task_storage_mutex = self.task_storage_mutex.lock().await;
+        let task_storage_mutex = self
+            .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, request.get_ref().task_id))
+            .lock()
+            .await; //self.storage.//self.task_storage_mutex.lock().await;
         let task = self
             ._internal_storage_read(&user_id, &format!("tasks:{}", request.get_ref().task_id))
             .await?;
@@ -202,12 +212,22 @@ impl crate::server::MyService {
             self._internal_storage_update(&user_id, &format!("tasks:{}", task.task_id), &payload)
                 .await?;
 
-            let task_storage_mutex = self.task_storage_mutex.lock().await;
+            let task_storage_mutex = self
+                .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, task.task_id))
+                .lock()
+                .await; //self.task_storage_mutex.lock().await;
             self.add_task_new_status(&user_id, &task).await?;
             drop(task_storage_mutex);
         } else {
             // We should update the decisions of the task in the storage if task_id is exist in the storage.
-            let task_storage_mutex = self.task_storage_mutex.lock().await;
+            let task_storage_mutex = self
+                .get_task_storage_mutex(&format!(
+                    "{}::tasks:{}",
+                    user_id,
+                    request.get_ref().task_id
+                ))
+                .lock()
+                .await; //self.task_storage_mutex.lock().await;
             let task = self
                 ._internal_storage_read(&user_id, &format!("tasks:{}", request.get_ref().task_id))
                 .await?;
@@ -259,7 +279,10 @@ impl crate::server::MyService {
                 return Ok(Response::new(Empty::default()));
             }
             if valid_decisions_num == task.participants.len() || anyone_rejected {
-                let task_storage_mutex = self.task_storage_mutex.lock().await;
+                let task_storage_mutex = self
+                    .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, task.task_id))
+                    .lock()
+                    .await; //self.task_storage_mutex.lock().await;
                 let task = self
                     ._internal_storage_read(
                         &user_id,
@@ -464,7 +487,10 @@ impl crate::server::MyService {
                     &payload,
                 )
                 .await?;
-                let task_storage_mutex = self.task_storage_mutex.lock().await;
+                let task_storage_mutex = self
+                    .get_task_storage_mutex(&format!("{}::tasks:{}", user_id, local_task.task_id))
+                    .lock()
+                    .await; //self.task_storage_mutex.lock().await;
                 self.add_task_new_status(user_id, &local_task).await?;
                 drop(task_storage_mutex);
             }
@@ -611,5 +637,16 @@ impl crate::server::MyService {
         decision.core_public_key = self.public_key.serialize().to_vec();
         decision.signature = signature.serialize_compact().to_vec();
         Ok(decision)
+    }
+
+    fn get_task_storage_mutex(&self, key_path: &str) -> &Mutex<i32> {
+        if self.task_storage_mutex.contains_key(key_path) {
+            return &self.task_storage_mutex.get(key_path).unwrap();
+        }
+        let lock = Mutex::new(0);
+        let _ = self
+            .task_storage_mutex
+            .try_insert(key_path.to_string(), lock);
+        return &self.task_storage_mutex.get(key_path).unwrap();
     }
 }
