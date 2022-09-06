@@ -84,7 +84,7 @@ impl crate::server::MyService {
             ));
         }
         self.check_user_consent(&user_consent_to_be_checked, &self.public_key.serialize())?;
-        let user_id = base64::encode(&user_public_key.serialize());
+        let user_id = hex::encode(&user_public_key.serialize());
         let mq_uri = match self.mq.create_user_account().await {
             Ok(mq_uri) => mq_uri,
             Err(e) => return Err(Status::internal(e)),

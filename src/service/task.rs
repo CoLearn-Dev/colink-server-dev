@@ -561,7 +561,7 @@ impl crate::server::MyService {
         }
         self.check_user_consent(decision.user_consent.as_ref().unwrap(), core_public_key_vec)?;
         // After checking user consent, we need to verify that the user_id match up with the UserConsent's user public key.
-        let user_pubilc_key_vec_from_userid: &Vec<u8> = &base64::decode(user_id).unwrap();
+        let user_pubilc_key_vec_from_userid: &Vec<u8> = &hex::decode(user_id).unwrap();
         let user_public_key_vec_from_userconsent: &Vec<u8> =
             &decision.user_consent.as_ref().unwrap().public_key;
         if user_pubilc_key_vec_from_userid != user_public_key_vec_from_userconsent {
