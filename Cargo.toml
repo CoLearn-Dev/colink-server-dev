@@ -1,11 +1,10 @@
 [package]
 name = "colink-server"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
-base64 = "0.13.0"
 chrono = "0.4"
 futures-lite = "1.12"
 hex = "0.4"

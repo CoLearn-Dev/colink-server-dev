@@ -417,10 +417,9 @@ dependencies = [
 
 [[package]]
 name = "colink-server"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
- "base64 0.13.0",
  "chrono",
  "futures-lite",
  "hex",
