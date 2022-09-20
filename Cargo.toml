@@ -20,6 +20,7 @@ serde = "1.0"
 serde_json = "1.0"
 structopt = "0.3"
 tokio = { version = "1.18", features = ["macros", "rt-multi-thread", "rt", "fs"] }
+toml = "0.5"
 tonic = { version = "0.7", features = ["tls", "tls-roots"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"

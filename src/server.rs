@@ -114,6 +114,20 @@ impl CoLink for MyService {
     ) -> Result<Response<Empty>, Status> {
         self._inter_core_sync_task(request).await
     }
+
+    async fn start_protocol_operator(
+        &self,
+        request: Request<ProtocolOperatorInstance>,
+    ) -> Result<Response<ProtocolOperatorInstance>, Status> {
+        self._start_protocol_operator(request).await
+    }
+
+    async fn stop_protocol_operator(
+        &self,
+        request: Request<ProtocolOperatorInstance>,
+    ) -> Result<Response<Empty>, Status> {
+        self._stop_protocol_operator(request).await
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -189,13 +203,14 @@ async fn run_server(
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     let jwt_secret = <[u8; 32]>::try_from(hex::decode(&buffer)?).unwrap();
-    tokio::spawn(print_host_token(jwt_secret));
     file = std::fs::File::open("init_state/priv_key.txt")?;
     buffer.clear();
     file.read_to_end(&mut buffer)?;
     let core_secret_key = secp256k1::SecretKey::from_slice(&hex::decode(&buffer)?)?;
     let core_public_key =
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
+    let host_id = hex::encode(&core_public_key.serialize());
+    tokio::spawn(print_host_token(jwt_secret, host_id));
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::new(BasicStorage::default()),
