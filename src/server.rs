@@ -25,6 +25,7 @@ pub struct MyService {
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
     pub inter_core_identity: Option<Identity>,
+    pub core_uri: Option<String>,
 }
 
 #[tonic::async_trait]
@@ -114,6 +115,20 @@ impl CoLink for MyService {
     ) -> Result<Response<Empty>, Status> {
         self._inter_core_sync_task(request).await
     }
+
+    async fn start_protocol_operator(
+        &self,
+        request: Request<ProtocolOperatorInstance>,
+    ) -> Result<Response<ProtocolOperatorInstance>, Status> {
+        self._start_protocol_operator(request).await
+    }
+
+    async fn stop_protocol_operator(
+        &self,
+        request: Request<ProtocolOperatorInstance>,
+    ) -> Result<Response<Empty>, Status> {
+        self._stop_protocol_operator(request).await
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -123,6 +138,7 @@ pub async fn init_and_run_server(
     mq_amqp: String,
     mq_api: String,
     mq_prefix: String,
+    core_uri: Option<String>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     ca: Option<PathBuf>,
@@ -138,6 +154,7 @@ pub async fn init_and_run_server(
         mq_amqp,
         mq_api,
         mq_prefix,
+        core_uri,
         cert,
         key,
         ca,
@@ -163,6 +180,7 @@ async fn run_server(
     mq_amqp: String,
     mq_api: String,
     mq_prefix: String,
+    core_uri: Option<String>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     ca: Option<PathBuf>,
@@ -189,13 +207,14 @@ async fn run_server(
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     let jwt_secret = <[u8; 32]>::try_from(hex::decode(&buffer)?).unwrap();
-    tokio::spawn(print_host_token(jwt_secret));
     file = std::fs::File::open("init_state/priv_key.txt")?;
     buffer.clear();
     file.read_to_end(&mut buffer)?;
     let core_secret_key = secp256k1::SecretKey::from_slice(&hex::decode(&buffer)?)?;
     let core_public_key =
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
+    let host_id = hex::encode(&core_public_key.serialize());
+    tokio::spawn(print_host_token(jwt_secret, host_id));
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::new(BasicStorage::default()),
@@ -208,6 +227,7 @@ async fn run_server(
         public_key: core_public_key,
         inter_core_ca_certificate: None,
         inter_core_identity: None,
+        core_uri,
     };
     if let Some(inter_core_ca) = inter_core_ca {
         service = service.ca_certificate(&inter_core_ca.as_path().display().to_string());

@@ -66,9 +66,9 @@ impl crate::server::MyService {
         }
     }
 
-    pub fn get_user_id(request_metadata: &MetadataMap) -> String {
+    pub fn get_key_from_metadata(request_metadata: &MetadataMap, key: &str) -> String {
         request_metadata
-            .get("user_id")
+            .get(key)
             .unwrap()
             .to_str()
             .unwrap()
@@ -119,6 +119,34 @@ impl crate::server::MyService {
             .is_ok())
     }
 
+    pub async fn _host_storage_update(
+        &self,
+        key_name: &str,
+        payload: &[u8],
+    ) -> Result<String, Status> {
+        match self
+            .storage
+            .update(&self.get_host_id(), key_name, payload)
+            .await
+        {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
+    }
+
+    pub async fn _host_storage_read(&self, key_name: &str) -> Result<Vec<u8>, Status> {
+        let entries = match self
+            .storage
+            .read_from_key_names(&self.get_host_id(), &[key_name.to_owned()])
+            .await
+        {
+            Ok(entries) => entries,
+            Err(e) => return Err(Status::internal(e)),
+        };
+        let payload = entries.values().next().unwrap();
+        Ok(payload.to_vec())
+    }
+
     pub fn check_user_consent(
         &self,
         user_consent: &UserConsent,
@@ -166,6 +194,10 @@ impl crate::server::MyService {
             }
         }
         Ok(())
+    }
+
+    pub fn get_host_id(&self) -> String {
+        hex::encode(&self.public_key.serialize())
     }
 }
 

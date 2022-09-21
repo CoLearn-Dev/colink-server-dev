@@ -26,6 +26,10 @@ struct CommandLineArgs {
     #[structopt(long, default_value = "colink")]
     mq_prefix: String,
 
+    /// URI of CoLink server
+    #[structopt(short, long)]
+    core_uri: Option<String>,
+
     /// Path to server certificate.
     /// If not supplied, TLS and MTLS will not be enabled
     #[structopt(long, parse(from_os_str))]
@@ -73,6 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mq_amqp,
         mq_api,
         mq_prefix,
+        core_uri,
         cert,
         key,
         ca,
@@ -89,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mq_amqp,
         mq_api,
         mq_prefix,
+        core_uri,
         cert,
         key,
         ca,

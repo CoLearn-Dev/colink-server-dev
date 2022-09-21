@@ -10,7 +10,7 @@ impl crate::server::MyService {
         Ok(Response::new(CoreInfo {
             mq_uri: match Self::check_privilege_in(request.metadata(), &["user"]) {
                 Ok(_i) => {
-                    let user_id = Self::get_user_id(request.metadata());
+                    let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
                     let mq_uri_bytes = self._internal_storage_read(&user_id, "mq_uri").await?;
                     String::from_utf8(mq_uri_bytes).unwrap()
                 }

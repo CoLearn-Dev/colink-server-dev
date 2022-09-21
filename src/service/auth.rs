@@ -102,12 +102,14 @@ impl crate::server::MyService {
             &jsonwebtoken::Header::default(),
             &AuthContent {
                 privilege: "user".to_string(),
-                user_id,
+                user_id: user_id.clone(),
                 exp: expiration_timestamp,
             },
             &jsonwebtoken::EncodingKey::from_secret(&self.jwt_secret),
         )
         .unwrap();
+        self._host_storage_update(&format!("users:{}:user_jwt", user_id), token.as_bytes())
+            .await?;
         let reply = Jwt { jwt: token };
         Ok(Response::new(reply))
     }
@@ -166,11 +168,11 @@ pub fn gen_jwt_secret() -> [u8; 32] {
     jwt_secret
 }
 
-pub fn get_host_token(jwt_secret: [u8; 32]) -> String {
+pub fn get_host_token(jwt_secret: [u8; 32], host_id: &str) -> String {
     let exp = chrono::Utc::now() + chrono::Duration::days(31);
     let auth_content = AuthContent {
         privilege: "host".to_string(),
-        user_id: "_host".to_string(),
+        user_id: host_id.to_string(),
         exp: exp.timestamp(),
     };
     jsonwebtoken::encode(
@@ -181,9 +183,9 @@ pub fn get_host_token(jwt_secret: [u8; 32]) -> String {
     .unwrap()
 }
 
-pub async fn print_host_token(jwt_secret: [u8; 32]) {
+pub async fn print_host_token(jwt_secret: [u8; 32], host_id: String) {
     // This should update every 24 hours in production code, but now we're just writing it to a file.
-    let token = get_host_token(jwt_secret);
+    let token = get_host_token(jwt_secret, &host_id);
     std::fs::write("host_token.txt", token.clone()).unwrap();
     debug!("{}", token);
 }

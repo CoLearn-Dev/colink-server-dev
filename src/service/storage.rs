@@ -8,7 +8,7 @@ impl crate::server::MyService {
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
         let payload: Vec<u8> = body.payload;
@@ -27,7 +27,7 @@ impl crate::server::MyService {
         request: Request<StorageEntries>,
     ) -> Result<Response<StorageEntries>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntries = request.into_inner();
         let entries: Vec<StorageEntry> = body.entries;
         let mut key_names_vec: Vec<String> = Vec::new();
@@ -100,7 +100,7 @@ impl crate::server::MyService {
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
         let payload: Vec<u8> = body.payload;
@@ -123,7 +123,7 @@ impl crate::server::MyService {
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
         let key_path = self.storage.delete(&user_id, &key_name).await;
@@ -145,7 +145,7 @@ impl crate::server::MyService {
         request: Request<ReadKeysRequest>,
     ) -> Result<Response<StorageEntries>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: ReadKeysRequest = request.into_inner();
         let prefix: String = body.prefix;
         let include_history: bool = body.include_history;

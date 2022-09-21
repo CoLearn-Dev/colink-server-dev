@@ -7,7 +7,7 @@ impl crate::server::MyService {
         request: Request<SubscribeRequest>,
     ) -> Result<Response<MqQueueName>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let queue_name = match self
             .storage
             .subscribe(
@@ -28,7 +28,7 @@ impl crate::server::MyService {
         request: Request<MqQueueName>,
     ) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
-        let user_id = Self::get_user_id(request.metadata());
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         match self
             .storage
             .unsubscribe(&user_id, &request.get_ref().queue_name)

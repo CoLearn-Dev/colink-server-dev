@@ -71,6 +71,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
         None,
+        None,
         false,
         false,
     ));
