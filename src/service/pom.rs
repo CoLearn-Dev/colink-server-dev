@@ -13,13 +13,10 @@ impl crate::server::MyService {
         request: Request<ProtocolOperatorInstance>,
     ) -> Result<Response<ProtocolOperatorInstance>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let privilege = request
-            .metadata()
-            .get("privilege")
-            .unwrap()
-            .to_str()
-            .unwrap();
-        if privilege != "host" && Self::get_user_id(request.metadata()) != request.get_ref().user_id
+        let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
+        if privilege != "host"
+            && Self::get_key_from_metadata(request.metadata(), "user_id")
+                != request.get_ref().user_id
         {
             return Err(Status::permission_denied(""));
         }
@@ -47,53 +44,44 @@ impl crate::server::MyService {
             .unwrap()
             .parse::<Value>()
             .unwrap();
-        let colink_version = toml["package"]["colink-version"].as_str();
-        if colink_version.is_none() {
-            return Err(Status::not_found("colink_version not found."));
+        if self.core_uri.is_none() {
+            return Err(Status::internal("core_uri not found."));
         }
-        let colink_version = colink_version.unwrap();
-        let sdk_language: Vec<&str> = colink_version.split('-').collect();
+        let core_addr = self.core_uri.as_ref().unwrap();
+        let entrypoint = toml["package"]["entrypoint"].as_str();
+        if entrypoint.is_none() {
+            return Err(Status::not_found("entrypoint not found."));
+        }
+        let entrypoint = entrypoint.unwrap();
         let user_jwt = self
             ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
             .await?;
         let user_jwt = String::from_utf8(user_jwt).unwrap();
-        if sdk_language[0] == "rust" {
-            let args = vec![
-                "run",
-                "--",
-                "--addr",
-                "http://localhost:8080", // FIXME
-                "--jwt",
-                &user_jwt,
-            ];
-            let process = Command::new("cargo")
-                .args(args)
-                .current_dir(
-                    Path::new(&colink_home)
-                        .join("protocols")
-                        .join(protocol_name),
-                )
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .unwrap();
-            let pid = process.id().to_string();
-            self._host_storage_update(
-                &format!("protocol_operator_instances:{}:user_id", instance_id),
-                request.get_ref().user_id.as_bytes(),
+        let process = Command::new("bash")
+            .arg("-c")
+            .arg(&*entrypoint)
+            .current_dir(
+                Path::new(&colink_home)
+                    .join("protocols")
+                    .join(protocol_name),
             )
-            .await?;
-            self._host_storage_update(
-                &format!("protocol_operator_instances:{}:pid", instance_id),
-                pid.as_bytes(),
-            )
-            .await?;
-        } else {
-            return Err(Status::unimplemented(format!(
-                "colink_version {} is not supported.",
-                colink_version
-            )));
-        }
+            .env("COLINK_CORE_ADDR", core_addr)
+            .env("COLINK_JWT", user_jwt)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = process.id().to_string();
+        self._host_storage_update(
+            &format!("protocol_operator_instances:{}:user_id", instance_id),
+            request.get_ref().user_id.as_bytes(),
+        )
+        .await?;
+        self._host_storage_update(
+            &format!("protocol_operator_instances:{}:pid", instance_id),
+            pid.as_bytes(),
+        )
+        .await?;
         Ok(Response::new(ProtocolOperatorInstance {
             instance_id: instance_id.to_string(),
             ..Default::default()
@@ -105,12 +93,7 @@ impl crate::server::MyService {
         request: Request<ProtocolOperatorInstance>,
     ) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
-        let privilege = request
-            .metadata()
-            .get("privilege")
-            .unwrap()
-            .to_str()
-            .unwrap();
+        let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let user_id = self
             ._host_storage_read(&format!(
                 "protocol_operator_instances:{}:user_id",
@@ -118,7 +101,9 @@ impl crate::server::MyService {
             ))
             .await?;
         let user_id = String::from_utf8(user_id).unwrap();
-        if privilege != "host" && Self::get_user_id(request.metadata()) != user_id {
+        if privilege != "host"
+            && Self::get_key_from_metadata(request.metadata(), "user_id") != user_id
+        {
             return Err(Status::permission_denied(""));
         }
         let pid = self

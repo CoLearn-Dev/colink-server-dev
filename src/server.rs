@@ -25,6 +25,7 @@ pub struct MyService {
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
     pub inter_core_identity: Option<Identity>,
+    pub core_uri: Option<String>,
 }
 
 #[tonic::async_trait]
@@ -137,6 +138,7 @@ pub async fn init_and_run_server(
     mq_amqp: String,
     mq_api: String,
     mq_prefix: String,
+    core_uri: Option<String>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     ca: Option<PathBuf>,
@@ -152,6 +154,7 @@ pub async fn init_and_run_server(
         mq_amqp,
         mq_api,
         mq_prefix,
+        core_uri,
         cert,
         key,
         ca,
@@ -177,6 +180,7 @@ async fn run_server(
     mq_amqp: String,
     mq_api: String,
     mq_prefix: String,
+    core_uri: Option<String>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     ca: Option<PathBuf>,
@@ -223,6 +227,7 @@ async fn run_server(
         public_key: core_public_key,
         inter_core_ca_certificate: None,
         inter_core_identity: None,
+        core_uri,
     };
     if let Some(inter_core_ca) = inter_core_ca {
         service = service.ca_certificate(&inter_core_ca.as_path().display().to_string());

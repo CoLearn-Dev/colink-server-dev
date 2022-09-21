@@ -66,9 +66,9 @@ impl crate::server::MyService {
         }
     }
 
-    pub fn get_user_id(request_metadata: &MetadataMap) -> String {
+    pub fn get_key_from_metadata(request_metadata: &MetadataMap, key: &str) -> String {
         request_metadata
-            .get("user_id")
+            .get(key)
             .unwrap()
             .to_str()
             .unwrap()
