@@ -38,7 +38,15 @@ impl crate::server::MyService {
             .join(protocol_name)
             .join("colink.toml");
         if std::fs::metadata(&path).is_err() {
-            return Err(Status::not_found("protocol not found."));
+            match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(Status::not_found(&format!(
+                        "protocol {} not found: {}",
+                        protocol_name, err
+                    )));
+                }
+            }
         }
         let toml = std::fs::read_to_string(&path)
             .unwrap()
@@ -48,6 +56,9 @@ impl crate::server::MyService {
             return Err(Status::internal("core_uri not found."));
         }
         let core_addr = self.core_uri.as_ref().unwrap();
+        if toml.get("package").is_none() || toml["package"].get("entrypoint").is_none() {
+            return Err(Status::not_found("entrypoint not found."));
+        }
         let entrypoint = toml["package"]["entrypoint"].as_str();
         if entrypoint.is_none() {
             return Err(Status::not_found("entrypoint not found."));
@@ -121,4 +132,89 @@ impl crate::server::MyService {
             .unwrap();
         Ok(Response::new(Empty::default()))
     }
+}
+
+const PROTOCOL_INVENTORY: &str =
+    "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols";
+async fn fetch_protocol_from_inventory(
+    protocol_name: &str,
+    colink_home: &str,
+) -> Result<(), String> {
+    let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
+    let http_client = reqwest::Client::new();
+    let resp = http_client.get(url).send().await;
+    if resp.is_err() || resp.as_ref().unwrap().status() != reqwest::StatusCode::OK {
+        return Err(format!(
+            "fail to find protocol {} in inventory",
+            protocol_name
+        ));
+    }
+    let toml = match resp.unwrap().text().await {
+        Ok(toml) => toml.parse::<Value>().unwrap(),
+        Err(err) => {
+            return Err(err.to_string());
+        }
+    };
+    let path = Path::new(&colink_home)
+        .join("protocols")
+        .join(protocol_name);
+    if toml.get("binary").is_some()
+        && toml["binary"]
+            .get(&format!(
+                "{}-{}",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ))
+            .is_some()
+    {
+        if let Some(_binary) = toml["binary"]
+            [&format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)]
+            .as_table()
+        {
+            // TODO
+            // return Ok(());
+        }
+    }
+    if toml.get("source").is_some() {
+        if toml["source"].get("archive").is_some() {
+            if let Some(_source) = toml["source"]["archive"].as_table() {
+                // TODO
+                // return Ok(());
+            }
+        }
+        if toml["source"].get("git").is_some() {
+            if let Some(source) = toml["source"]["git"].as_table() {
+                fetch_from_git(
+                    source["url"].as_str().unwrap(),
+                    source["commit"].as_str().unwrap(),
+                    path.to_str().unwrap(),
+                )
+                .await?;
+                return Ok(());
+            }
+        }
+    }
+    return Err(format!(
+        "the inventory file of protocol {} is damaged",
+        protocol_name
+    ));
+}
+
+async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
+    let git_clone = Command::new("git")
+        .args(["clone", "--recursive", url, path])
+        .output()
+        .unwrap();
+    if !git_clone.status.success() {
+        return Err(format!("fail to fetch from {}", url));
+    }
+    let git_checkout = Command::new("git")
+        .args(["checkout", commit])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    if !git_checkout.status.success() {
+        return Err(format!("checkout error: commit {}", commit));
+    }
+    Ok(())
 }
