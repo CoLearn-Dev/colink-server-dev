@@ -48,10 +48,10 @@ impl crate::server::MyService {
                 }
             }
         }
-        let toml = std::fs::read_to_string(&path)
-            .unwrap()
-            .parse::<Value>()
-            .unwrap();
+        let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
+            Ok(toml) => toml,
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         if self.core_uri.is_none() {
             return Err(Status::internal("core_uri not found."));
         }
@@ -68,7 +68,7 @@ impl crate::server::MyService {
             ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
             .await?;
         let user_jwt = String::from_utf8(user_jwt).unwrap();
-        let process = Command::new("bash")
+        let process = match Command::new("bash")
             .arg("-c")
             .arg(&*entrypoint)
             .current_dir(
@@ -81,7 +81,10 @@ impl crate::server::MyService {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .unwrap();
+        {
+            Ok(child) => child,
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         let pid = process.id().to_string();
         self._host_storage_update(
             &format!("protocol_operator_instances:{}:user_id", instance_id),
@@ -124,12 +127,15 @@ impl crate::server::MyService {
             ))
             .await?;
         let pid = String::from_utf8(pid).unwrap();
-        Command::new("kill")
+        match Command::new("kill")
             .args(["-9", &pid])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .unwrap();
+        {
+            Ok(_) => {}
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         Ok(Response::new(Empty::default()))
     }
 }
@@ -150,7 +156,10 @@ async fn fetch_protocol_from_inventory(
         ));
     }
     let toml = match resp.unwrap().text().await {
-        Ok(toml) => toml.parse::<Value>().unwrap(),
+        Ok(toml) => match toml.parse::<Value>() {
+            Ok(toml) => toml,
+            Err(err) => return Err(err.to_string()),
+        },
         Err(err) => {
             return Err(err.to_string());
         }
@@ -167,30 +176,48 @@ async fn fetch_protocol_from_inventory(
             ))
             .is_some()
     {
-        if let Some(_binary) = toml["binary"]
+        if let Some(binary) = toml["binary"]
             [&format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)]
             .as_table()
         {
-            // TODO
-            // return Ok(());
-        }
-    }
-    if toml.get("source").is_some() {
-        if toml["source"].get("archive").is_some() {
-            if let Some(_source) = toml["source"]["archive"].as_table() {
+            if binary.get("url").is_some()
+                && binary["url"].as_str().is_some()
+                && binary.get("sha256").is_some()
+                && binary["sha256"].as_str().is_some()
+            {
                 // TODO
                 // return Ok(());
             }
         }
+    }
+    if toml.get("source").is_some() {
+        if toml["source"].get("archive").is_some() {
+            if let Some(source) = toml["source"]["archive"].as_table() {
+                if source.get("url").is_some()
+                    && source["url"].as_str().is_some()
+                    && source.get("sha256").is_some()
+                    && source["sha256"].as_str().is_some()
+                {
+                    // TODO
+                    // return Ok(());
+                }
+            }
+        }
         if toml["source"].get("git").is_some() {
             if let Some(source) = toml["source"]["git"].as_table() {
-                fetch_from_git(
-                    source["url"].as_str().unwrap(),
-                    source["commit"].as_str().unwrap(),
-                    path.to_str().unwrap(),
-                )
-                .await?;
-                return Ok(());
+                if source.get("url").is_some()
+                    && source["url"].as_str().is_some()
+                    && source.get("commit").is_some()
+                    && source["commit"].as_str().is_some()
+                {
+                    fetch_from_git(
+                        source["url"].as_str().unwrap(),
+                        source["commit"].as_str().unwrap(),
+                        path.to_str().unwrap(),
+                    )
+                    .await?;
+                    return Ok(());
+                }
             }
         }
     }
@@ -201,18 +228,24 @@ async fn fetch_protocol_from_inventory(
 }
 
 async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
-    let git_clone = Command::new("git")
+    let git_clone = match Command::new("git")
         .args(["clone", "--recursive", url, path])
         .output()
-        .unwrap();
+    {
+        Ok(git_clone) => git_clone,
+        Err(err) => return Err(err.to_string()),
+    };
     if !git_clone.status.success() {
         return Err(format!("fail to fetch from {}", url));
     }
-    let git_checkout = Command::new("git")
+    let git_checkout = match Command::new("git")
         .args(["checkout", commit])
         .current_dir(path)
         .output()
-        .unwrap();
+    {
+        Ok(git_checkout) => git_checkout,
+        Err(err) => return Err(err.to_string()),
+    };
     if !git_checkout.status.success() {
         return Err(format!("checkout error: commit {}", commit));
     }
