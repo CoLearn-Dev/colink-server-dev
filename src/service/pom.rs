@@ -33,6 +33,12 @@ impl crate::server::MyService {
         } else {
             return Err(Status::not_found("colink home not found."));
         };
+        if !Path::new(&colink_home).join("protocols").exists() {
+            match std::fs::create_dir_all(Path::new(&colink_home).join("protocols")) {
+                Ok(_) => {}
+                Err(err) => return Err(Status::internal(err.to_string())),
+            }
+        }
         let path = Path::new(&colink_home)
             .join("protocols")
             .join(protocol_name)
