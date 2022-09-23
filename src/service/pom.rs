@@ -192,7 +192,7 @@ async fn fetch_protocol_from_inventory(
                 && binary["sha256"].as_str().is_some()
             {
                 // TODO
-                // return Ok(());
+                return Err("Not implemented.".to_string());
             }
         }
     }
@@ -205,7 +205,7 @@ async fn fetch_protocol_from_inventory(
                     && source["sha256"].as_str().is_some()
                 {
                     // TODO
-                    // return Ok(());
+                    return Err("Not implemented.".to_string());
                 }
             }
         }
