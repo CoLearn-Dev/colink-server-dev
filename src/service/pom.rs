@@ -33,21 +33,38 @@ impl crate::server::MyService {
         } else {
             return Err(Status::not_found("colink home not found."));
         };
+        if !Path::new(&colink_home).join("protocols").exists() {
+            match std::fs::create_dir_all(Path::new(&colink_home).join("protocols")) {
+                Ok(_) => {}
+                Err(err) => return Err(Status::internal(err.to_string())),
+            }
+        }
         let path = Path::new(&colink_home)
             .join("protocols")
             .join(protocol_name)
             .join("colink.toml");
         if std::fs::metadata(&path).is_err() {
-            return Err(Status::not_found("protocol not found."));
+            match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(Status::not_found(&format!(
+                        "protocol {} not found: {}",
+                        protocol_name, err
+                    )));
+                }
+            }
         }
-        let toml = std::fs::read_to_string(&path)
-            .unwrap()
-            .parse::<Value>()
-            .unwrap();
+        let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
+            Ok(toml) => toml,
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         if self.core_uri.is_none() {
             return Err(Status::internal("core_uri not found."));
         }
         let core_addr = self.core_uri.as_ref().unwrap();
+        if toml.get("package").is_none() || toml["package"].get("entrypoint").is_none() {
+            return Err(Status::not_found("entrypoint not found."));
+        }
         let entrypoint = toml["package"]["entrypoint"].as_str();
         if entrypoint.is_none() {
             return Err(Status::not_found("entrypoint not found."));
@@ -57,7 +74,7 @@ impl crate::server::MyService {
             ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
             .await?;
         let user_jwt = String::from_utf8(user_jwt).unwrap();
-        let process = Command::new("bash")
+        let process = match Command::new("bash")
             .arg("-c")
             .arg(&*entrypoint)
             .current_dir(
@@ -70,7 +87,10 @@ impl crate::server::MyService {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .unwrap();
+        {
+            Ok(child) => child,
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         let pid = process.id().to_string();
         self._host_storage_update(
             &format!("protocol_operator_instances:{}:user_id", instance_id),
@@ -113,12 +133,127 @@ impl crate::server::MyService {
             ))
             .await?;
         let pid = String::from_utf8(pid).unwrap();
-        Command::new("kill")
+        match Command::new("kill")
             .args(["-9", &pid])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .unwrap();
+        {
+            Ok(_) => {}
+            Err(err) => return Err(Status::internal(err.to_string())),
+        };
         Ok(Response::new(Empty::default()))
     }
+}
+
+const PROTOCOL_INVENTORY: &str =
+    "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols";
+async fn fetch_protocol_from_inventory(
+    protocol_name: &str,
+    colink_home: &str,
+) -> Result<(), String> {
+    let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
+    let http_client = reqwest::Client::new();
+    let resp = http_client.get(url).send().await;
+    if resp.is_err() || resp.as_ref().unwrap().status() != reqwest::StatusCode::OK {
+        return Err(format!(
+            "fail to find protocol {} in inventory",
+            protocol_name
+        ));
+    }
+    let toml = match resp.unwrap().text().await {
+        Ok(toml) => match toml.parse::<Value>() {
+            Ok(toml) => toml,
+            Err(err) => return Err(err.to_string()),
+        },
+        Err(err) => {
+            return Err(err.to_string());
+        }
+    };
+    let path = Path::new(&colink_home)
+        .join("protocols")
+        .join(protocol_name);
+    if toml.get("binary").is_some()
+        && toml["binary"]
+            .get(&format!(
+                "{}-{}",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ))
+            .is_some()
+    {
+        if let Some(binary) = toml["binary"]
+            [&format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)]
+            .as_table()
+        {
+            if binary.get("url").is_some()
+                && binary["url"].as_str().is_some()
+                && binary.get("sha256").is_some()
+                && binary["sha256"].as_str().is_some()
+            {
+                // TODO
+                return Err("Not implemented.".to_string());
+            }
+        }
+    }
+    if toml.get("source").is_some() {
+        if toml["source"].get("archive").is_some() {
+            if let Some(source) = toml["source"]["archive"].as_table() {
+                if source.get("url").is_some()
+                    && source["url"].as_str().is_some()
+                    && source.get("sha256").is_some()
+                    && source["sha256"].as_str().is_some()
+                {
+                    // TODO
+                    return Err("Not implemented.".to_string());
+                }
+            }
+        }
+        if toml["source"].get("git").is_some() {
+            if let Some(source) = toml["source"]["git"].as_table() {
+                if source.get("url").is_some()
+                    && source["url"].as_str().is_some()
+                    && source.get("commit").is_some()
+                    && source["commit"].as_str().is_some()
+                {
+                    fetch_from_git(
+                        source["url"].as_str().unwrap(),
+                        source["commit"].as_str().unwrap(),
+                        path.to_str().unwrap(),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            }
+        }
+    }
+    return Err(format!(
+        "the inventory file of protocol {} is damaged",
+        protocol_name
+    ));
+}
+
+async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
+    let git_clone = match Command::new("git")
+        .args(["clone", "--recursive", url, path])
+        .output()
+    {
+        Ok(git_clone) => git_clone,
+        Err(err) => return Err(err.to_string()),
+    };
+    if !git_clone.status.success() {
+        return Err(format!("fail to fetch from {}", url));
+    }
+    let git_checkout = match Command::new("git")
+        .args(["checkout", commit])
+        .current_dir(path)
+        .output()
+    {
+        Ok(git_checkout) => git_checkout,
+        Err(err) => return Err(err.to_string()),
+    };
+    if !git_checkout.status.success() {
+        return Err(format!("checkout error: commit {}", commit));
+    }
+    Ok(())
 }
