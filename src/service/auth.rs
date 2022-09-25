@@ -110,6 +110,8 @@ impl crate::server::MyService {
         .unwrap();
         self._host_storage_update(&format!("users:{}:user_jwt", user_id), token.as_bytes())
             .await?;
+        self._host_storage_update("users:latest", token.as_bytes())
+            .await?;
         let reply = Jwt { jwt: token };
         Ok(Response::new(reply))
     }

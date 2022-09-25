@@ -214,7 +214,7 @@ async fn run_server(
     let core_public_key =
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let host_id = hex::encode(&core_public_key.serialize());
-    tokio::spawn(print_host_token(jwt_secret, host_id));
+    tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::new(BasicStorage::default()),
@@ -239,6 +239,10 @@ async fn run_server(
         );
     }
     service.mq.delete_all_accounts().await?;
+    let mq_uri = service.mq.create_user_account().await?;
+    service
+        ._internal_storage_update(&host_id, "mq_uri", mq_uri.as_bytes())
+        .await?;
     let check_auth_interceptor = CheckAuthInterceptor { jwt_secret };
     let service = CoLinkServer::with_interceptor(service, check_auth_interceptor);
 
