@@ -15,6 +15,12 @@ impl crate::server::MyService {
     pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        let is_initialized = self
+            ._internal_storage_read(&user_id, "is_initialized")
+            .await?[0];
+        if is_initialized == 0 {
+            return Err(Status::unavailable("User not initialized.".to_string()));
+        }
         let task_id = Uuid::new_v4();
         let mut task = request.into_inner();
         task.decisions
@@ -388,7 +394,7 @@ impl crate::server::MyService {
         Ok(())
     }
 
-    async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
+    pub async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
         let protocol_key = if task.status != "started" {
             task.protocol_name.clone()
         } else {
@@ -578,7 +584,7 @@ impl crate::server::MyService {
         }
     }
 
-    async fn generate_decision(
+    pub async fn generate_decision(
         &self,
         is_approved: bool,
         is_rejected: bool,

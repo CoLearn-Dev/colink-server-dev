@@ -8,6 +8,7 @@ use secp256k1::Secp256k1;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::{
     transport::{Certificate, Identity, Server, ServerTlsConfig},
@@ -28,106 +29,112 @@ pub struct MyService {
     pub core_uri: Option<String>,
 }
 
+pub struct GrpcService {
+    pub service: Arc<MyService>,
+}
+
 #[tonic::async_trait]
-impl CoLink for MyService {
+impl CoLink for GrpcService {
     async fn generate_token(
         &self,
         request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
-        self._generate_token(request).await
+        self.service._generate_token(request).await
     }
 
     async fn import_user(&self, request: Request<UserConsent>) -> Result<Response<Jwt>, Status> {
-        self._import_user(request).await
+        self.service
+            ._import_user(request, self.service.clone())
+            .await
     }
 
     async fn create_entry(
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        self._create_entry(request).await
+        self.service._create_entry(request).await
     }
 
     async fn read_entries(
         &self,
         request: Request<StorageEntries>,
     ) -> Result<Response<StorageEntries>, Status> {
-        self._read_entries(request).await
+        self.service._read_entries(request).await
     }
 
     async fn update_entry(
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        self._update_entry(request).await
+        self.service._update_entry(request).await
     }
 
     async fn delete_entry(
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        self._delete_entry(request).await
+        self.service._delete_entry(request).await
     }
 
     async fn read_keys(
         &self,
         request: Request<ReadKeysRequest>,
     ) -> Result<Response<StorageEntries>, Status> {
-        self._read_keys(request).await
+        self.service._read_keys(request).await
     }
 
     async fn create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
-        self._create_task(request).await
+        self.service._create_task(request).await
     }
 
     async fn confirm_task(
         &self,
         request: Request<ConfirmTaskRequest>,
     ) -> Result<Response<Empty>, Status> {
-        self._confirm_task(request).await
+        self.service._confirm_task(request).await
     }
 
     async fn finish_task(&self, request: Request<Task>) -> Result<Response<Empty>, Status> {
-        self._finish_task(request).await
+        self.service._finish_task(request).await
     }
 
     async fn request_core_info(
         &self,
         request: Request<Empty>,
     ) -> Result<Response<CoreInfo>, Status> {
-        self._request_core_info(request).await
+        self.service._request_core_info(request).await
     }
 
     async fn subscribe(
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<MqQueueName>, Status> {
-        self._subscribe(request).await
+        self.service._subscribe(request).await
     }
 
     async fn unsubscribe(&self, request: Request<MqQueueName>) -> Result<Response<Empty>, Status> {
-        self._unsubscribe(request).await
+        self.service._unsubscribe(request).await
     }
 
     async fn inter_core_sync_task(
         &self,
         request: Request<Task>,
     ) -> Result<Response<Empty>, Status> {
-        self._inter_core_sync_task(request).await
+        self.service._inter_core_sync_task(request).await
     }
 
     async fn start_protocol_operator(
         &self,
         request: Request<ProtocolOperatorInstance>,
     ) -> Result<Response<ProtocolOperatorInstance>, Status> {
-        self._start_protocol_operator(request).await
+        self.service._start_protocol_operator(request).await
     }
 
     async fn stop_protocol_operator(
         &self,
         request: Request<ProtocolOperatorInstance>,
     ) -> Result<Response<Empty>, Status> {
-        self._stop_protocol_operator(request).await
+        self.service._stop_protocol_operator(request).await
     }
 }
 
@@ -243,14 +250,17 @@ async fn run_server(
     service
         ._internal_storage_update(&host_id, "mq_uri", mq_uri.as_bytes())
         .await?;
+    let grpc_service = GrpcService {
+        service: Arc::new(service),
+    };
     let check_auth_interceptor = CheckAuthInterceptor { jwt_secret };
-    let service = CoLinkServer::with_interceptor(service, check_auth_interceptor);
+    let grpc_service = CoLinkServer::with_interceptor(grpc_service, check_auth_interceptor);
 
     if cert.is_none() || key.is_none() {
         /* No TLS */
         Server::builder()
             .accept_http1(true)
-            .add_service(service)
+            .add_service(grpc_service)
             .serve(socket_address)
             .await?;
     } else {
@@ -274,7 +284,7 @@ async fn run_server(
 
         Server::builder()
             .tls_config(tls)?
-            .add_service(service)
+            .add_service(grpc_service)
             .serve(socket_address)
             .await?;
     }

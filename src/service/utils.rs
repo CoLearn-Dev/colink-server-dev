@@ -147,6 +147,35 @@ impl crate::server::MyService {
         Ok(payload.to_vec())
     }
 
+    pub async fn _user_storage_update(
+        &self,
+        user_id: &str,
+        key_name: &str,
+        payload: &[u8],
+    ) -> Result<String, Status> {
+        match self.storage.update(user_id, key_name, payload).await {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
+    }
+
+    pub async fn _user_storage_read(
+        &self,
+        user_id: &str,
+        key_name: &str,
+    ) -> Result<Vec<u8>, Status> {
+        let entries = match self
+            .storage
+            .read_from_key_names(user_id, &[key_name.to_owned()])
+            .await
+        {
+            Ok(entries) => entries,
+            Err(e) => return Err(Status::internal(e)),
+        };
+        let payload = entries.values().next().unwrap();
+        Ok(payload.to_vec())
+    }
+
     pub fn check_user_consent(
         &self,
         user_consent: &UserConsent,
@@ -198,6 +227,17 @@ impl crate::server::MyService {
 
     pub fn get_host_id(&self) -> String {
         hex::encode(&self.public_key.serialize())
+    }
+
+    pub fn get_colink_home(&self) -> Result<String, Status> {
+        let colink_home = if std::env::var("COLINK_HOME").is_ok() {
+            std::env::var("COLINK_HOME").unwrap()
+        } else if std::env::var("HOME").is_ok() {
+            std::env::var("HOME").unwrap() + "/.colink"
+        } else {
+            return Err(Status::not_found("colink home not found."));
+        };
+        Ok(colink_home)
     }
 }
 

@@ -1,0 +1,16 @@
+[policy_module]
+enable = true
+accept_all_tasks = true
+
+[remote_storage]
+enable = true
+
+[remote_command]
+enable = true
+
+[registry]
+enable = true
+use_default_registry = false
+
+[telegram_bot]
+enable = true
