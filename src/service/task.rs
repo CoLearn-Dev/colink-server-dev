@@ -16,7 +16,7 @@ impl crate::server::MyService {
         Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let is_initialized = self
-            ._internal_storage_read(&user_id, "is_initialized")
+            ._internal_storage_read(&user_id, "_is_initialized")
             .await?[0];
         if is_initialized == 0 {
             return Err(Status::unavailable("User not initialized.".to_string()));
@@ -190,6 +190,12 @@ impl crate::server::MyService {
     ) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "guest"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        let is_initialized = self
+            ._internal_storage_read(&user_id, "_is_initialized")
+            .await?[0];
+        if is_initialized == 0 {
+            return Err(Status::unavailable("User not initialized.".to_string()));
+        }
         if !self
             ._internal_storage_contains(&user_id, &format!("tasks:{}", request.get_ref().task_id))
             .await?

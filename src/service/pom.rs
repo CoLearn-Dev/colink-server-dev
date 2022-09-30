@@ -38,6 +38,7 @@ impl crate::server::MyService {
             .join(protocol_name)
             .join("colink.toml");
         if std::fs::metadata(&path).is_err() {
+            let _ = self.pom_fetch_mutex.lock().await;
             match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                 Ok(_) => {}
                 Err(err) => {
@@ -146,7 +147,6 @@ async fn fetch_protocol_from_inventory(
     protocol_name: &str,
     colink_home: &str,
 ) -> Result<(), String> {
-    // TODO file lock
     let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
     let http_client = reqwest::Client::new();
     let resp = http_client.get(url).send().await;

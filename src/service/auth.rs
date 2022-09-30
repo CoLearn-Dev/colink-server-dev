@@ -112,16 +112,14 @@ impl crate::server::MyService {
         .unwrap();
         self._host_storage_update(&format!("users:{}:user_jwt", user_id), token.as_bytes())
             .await?;
-        self._internal_storage_update(&user_id, "is_initialized", &[0])
+        self._internal_storage_update(&user_id, "_is_initialized", &[0])
             .await?;
-        {
-            let user_id = user_id.clone();
-            let user_jwt = token.clone();
-            tokio::spawn(async move {
-                user_init(service, &user_id, &user_jwt).await?;
-                Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
-            });
-        }
+        let init_user_id = user_id.clone();
+        let init_user_jwt = token.clone();
+        tokio::spawn(async move {
+            user_init(service, &init_user_id, &init_user_jwt).await?;
+            Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
+        });
         let reply = Jwt { jwt: token };
         Ok(Response::new(reply))
     }

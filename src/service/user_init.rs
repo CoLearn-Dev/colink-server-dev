@@ -1,7 +1,5 @@
 use super::utils::*;
 use crate::{colink_proto::*, server::MyService};
-use colink_policy_module_proto::*;
-use prost::Message;
 use std::{path::Path, sync::Arc};
 use toml::Value;
 
@@ -23,64 +21,61 @@ pub async fn user_init(
         Ok(toml) => toml,
         Err(err) => Err(err.to_string())?,
     };
-    if toml.get("policy_module").is_some() && toml["policy_module"]["enable"].as_bool().unwrap() {
-        _start_protocol_operator(&service, user_id, user_jwt, "policy_module").await?;
-        let mut settings = Settings {
-            enable: true,
-            ..Default::default()
-        };
-        if toml["policy_module"]["accept_all_tasks"].as_bool().unwrap() {
-            let rule_id = uuid::Uuid::new_v4().to_string();
-            let rule = Rule {
-                rule_id,
-                task_filter: Some(TaskFilter::default()),
-                action: "approve".to_string(),
-                priority: 1,
-            };
-            settings.rules.push(rule);
-        }
-        let mut payload = vec![];
-        settings.encode(&mut payload).unwrap();
-        service
-            ._user_storage_update(user_id, "_policy_module:settings", &payload)
-            .await?;
-        let participants = vec![Participant {
-            user_id: user_id.to_string(),
-            role: "local".to_string(),
-        }];
-        _run_local_task(
-            &service,
-            user_id,
-            "policy_module",
-            Default::default(),
-            &participants,
-        )
-        .await?;
-        loop {
-            if service
-                ._user_storage_read(user_id, "_policy_module:applied_settings_timestamp")
-                .await
-                .is_ok()
-            {
-                break;
+    let mut protocols = toml.as_table().unwrap().clone();
+    while !protocols.is_empty() {
+        let protocol_num = protocols.len();
+        let mut remaining_protocols = protocols.clone();
+        for (protocol_name, value) in protocols {
+            let mut start = true;
+            if value.get("start_after").is_some() && value["start_after"].is_array() {
+                let start_after_list = value["start_after"].as_array().unwrap();
+                for p in start_after_list {
+                    if remaining_protocols.contains_key(&p.as_str().unwrap().to_string()) {
+                        start = false;
+                    }
+                }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            if start {
+                if value.get("create_entry").is_some() && value["create_entry"].is_array() {
+                    let entries = value["create_entry"].as_array().unwrap();
+                    for entry in entries {
+                        service
+                            ._user_storage_update(
+                                user_id,
+                                entry["key"].as_str().unwrap(),
+                                entry["value"].as_str().unwrap().as_bytes(),
+                            )
+                            .await?;
+                    }
+                }
+                let is_initialized_key =
+                    format!("_internal:protocols:{}:_is_initialized", protocol_name);
+                service
+                    ._user_storage_update(user_id, &is_initialized_key, &[0])
+                    .await?;
+                _start_protocol_operator(&service, user_id, user_jwt, &protocol_name).await?;
+                loop {
+                    let is_initialized = service
+                        ._user_storage_read(user_id, &is_initialized_key)
+                        .await?[0];
+                    if is_initialized == 1 {
+                        break;
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
+                remaining_protocols.remove(&protocol_name);
+            }
         }
-    }
-    if toml.get("remote_storage").is_some() && toml["remote_storage"]["enable"].as_bool().unwrap() {
-        _start_protocol_operator(&service, user_id, user_jwt, "remote_storage").await?;
-    }
-    if toml.get("remote_command").is_some() && toml["remote_command"]["enable"].as_bool().unwrap() {
-        _start_protocol_operator(&service, user_id, user_jwt, "remote_command").await?;
-    }
-    if toml.get("registry").is_some() && toml["registry"]["enable"].as_bool().unwrap() {
-        _start_protocol_operator(&service, user_id, user_jwt, "registry").await?;
-    }
-    if toml.get("telegram_bot").is_some() && toml["telegram_bot"]["enable"].as_bool().unwrap() {
-        _start_protocol_operator(&service, user_id, user_jwt, "telegram_bot").await?;
+        protocols = remaining_protocols;
+        if protocol_num == protocols.len() {
+            Err(format!(
+                "protocols {:?} cannot start",
+                protocols.keys().cloned().collect::<Vec<String>>()
+            ))?;
+        }
     }
     service
-        ._internal_storage_update(user_id, "is_initialized", &[1])
+        ._internal_storage_update(user_id, "_is_initialized", &[1])
         .await?;
     Ok(())
 }
@@ -108,39 +103,5 @@ async fn _start_protocol_operator(
         tonic::metadata::MetadataValue::try_from(user_id).unwrap(),
     );
     service._start_protocol_operator(req).await?;
-    Ok(())
-}
-
-async fn _run_local_task(
-    service: &MyService,
-    user_id: &str,
-    protocol_name: &str,
-    protocol_param: &[u8],
-    participants: &[Participant],
-) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let mut local_task = Task {
-        task_id: uuid::Uuid::new_v4().to_string(),
-        protocol_name: protocol_name.to_string(),
-        protocol_param: protocol_param.to_vec(),
-        participants: participants.to_vec(),
-        require_agreement: false,
-        status: "started".to_string(),
-        expiration_time: chrono::Utc::now().timestamp() + 86400,
-        ..Default::default()
-    };
-    local_task
-        .decisions
-        .resize(local_task.participants.len(), Default::default());
-    local_task.decisions[0] = service
-        .generate_decision(true, false, "", user_id, &local_task)
-        .await?;
-    let mut payload = vec![];
-    local_task.encode(&mut payload).unwrap();
-    service
-        ._internal_storage_update(user_id, &format!("tasks:{}", local_task.task_id), &payload)
-        .await?;
-    let task_storage_mutex = service.task_storage_mutex.lock().await;
-    service.add_task_new_status(user_id, &local_task).await?;
-    drop(task_storage_mutex);
     Ok(())
 }

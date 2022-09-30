@@ -22,6 +22,7 @@ pub struct MyService {
     pub mq: Box<dyn MQ>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
     pub task_storage_mutex: Mutex<i32>,
+    pub pom_fetch_mutex: Mutex<i32>,
     pub public_key: secp256k1::PublicKey,
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
@@ -230,6 +231,7 @@ async fn run_server(
         jwt_secret,
         mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
         task_storage_mutex: Mutex::new(0),
+        pom_fetch_mutex: Mutex::new(0),
         secret_key: core_secret_key,
         public_key: core_public_key,
         inter_core_ca_certificate: None,
