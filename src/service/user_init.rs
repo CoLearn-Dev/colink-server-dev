@@ -3,10 +3,6 @@ use crate::{colink_proto::*, server::MyService};
 use std::{path::Path, sync::Arc};
 use toml::Value;
 
-mod colink_policy_module_proto {
-    include!(concat!(env!("OUT_DIR"), "/colink_policy_module.rs"));
-}
-
 pub async fn user_init(
     service: Arc<MyService>,
     user_id: &str,
