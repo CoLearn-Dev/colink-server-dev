@@ -17,62 +17,78 @@ pub async fn user_init(
         Ok(toml) => toml,
         Err(err) => Err(err.to_string())?,
     };
-    let mut protocols = toml.as_table().unwrap().clone();
-    while !protocols.is_empty() {
-        let protocol_num = protocols.len();
-        let mut remaining_protocols = protocols.clone();
-        for (protocol_name, value) in protocols {
-            let mut start = true;
-            if value.get("start_after").is_some() && value["start_after"].is_array() {
-                let start_after_list = value["start_after"].as_array().unwrap();
-                for p in start_after_list {
-                    if remaining_protocols.contains_key(&p.as_str().unwrap().to_string()) {
-                        start = false;
-                    }
-                }
-            }
-            if start {
-                if value.get("create_entry").is_some() && value["create_entry"].is_array() {
-                    let entries = value["create_entry"].as_array().unwrap();
-                    for entry in entries {
-                        service
-                            ._user_storage_update(
-                                user_id,
-                                entry["key"].as_str().unwrap(),
-                                entry["value"].as_str().unwrap().as_bytes(),
-                            )
-                            .await?;
-                    }
-                }
-                let is_initialized_key =
-                    format!("_internal:protocols:{}:_is_initialized", protocol_name);
-                service
-                    ._user_storage_update(user_id, &is_initialized_key, &[0])
-                    .await?;
-                _start_protocol_operator(&service, user_id, user_jwt, &protocol_name).await?;
-                loop {
-                    let is_initialized = service
-                        ._user_storage_read(user_id, &is_initialized_key)
-                        .await?[0];
-                    if is_initialized == 1 {
-                        break;
-                    }
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                }
-                remaining_protocols.remove(&protocol_name);
-            }
+    let protocols = toml.as_table().unwrap().clone();
+    let mut handles = vec![];
+    for (protocol_name, value) in protocols {
+        if value.get("operator_num").is_some() && value["operator_num"].as_integer().unwrap() > 0 {
+            let service = service.clone();
+            let user_id = user_id.to_string();
+            let user_jwt = user_jwt.to_string();
+            handles.push(tokio::spawn(async move {
+                start_protocol(&service, &user_id, &user_jwt, &protocol_name, &value).await
+            }));
         }
-        protocols = remaining_protocols;
-        if protocol_num == protocols.len() {
-            Err(format!(
-                "protocols {:?} cannot start",
-                protocols.keys().cloned().collect::<Vec<String>>()
-            ))?;
-        }
+    }
+    for handle in handles {
+        handle.await??;
     }
     service
         ._internal_storage_update(user_id, "_is_initialized", &[1])
         .await?;
+    Ok(())
+}
+
+async fn start_protocol(
+    service: &MyService,
+    user_id: &str,
+    user_jwt: &str,
+    protocol_name: &str,
+    value: &Value,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    if value.get("start_after").is_some() && value["start_after"].is_array() {
+        let start_after_list = value["start_after"].as_array().unwrap();
+        for p in start_after_list {
+            wait_protocol_initialization(service, user_id, p.as_str().unwrap()).await?;
+        }
+    }
+    if value.get("create_entry").is_some() && value["create_entry"].is_array() {
+        let entries = value["create_entry"].as_array().unwrap();
+        for entry in entries {
+            service
+                ._user_storage_update(
+                    user_id,
+                    entry["key"].as_str().unwrap(),
+                    entry["value"].as_str().unwrap().as_bytes(),
+                )
+                .await?;
+        }
+    }
+    let is_initialized_key = format!("_internal:protocols:{}:_is_initialized", protocol_name);
+    service
+        ._user_storage_update(user_id, &is_initialized_key, &[0])
+        .await?;
+    for _ in 0..value["operator_num"].as_integer().unwrap() {
+        _start_protocol_operator(service, user_id, user_jwt, protocol_name).await?;
+    }
+    wait_protocol_initialization(service, user_id, protocol_name).await?;
+    Ok(())
+}
+
+async fn wait_protocol_initialization(
+    service: &MyService,
+    user_id: &str,
+    protocol_name: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let is_initialized_key = format!("_internal:protocols:{}:_is_initialized", protocol_name);
+    loop {
+        let is_initialized = service
+            ._user_storage_read(user_id, &is_initialized_key)
+            .await?[0];
+        if is_initialized == 1 {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
     Ok(())
 }
 
