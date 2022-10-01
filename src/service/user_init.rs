@@ -19,13 +19,15 @@ pub async fn user_init(
     };
     let protocols = toml.as_table().unwrap().clone();
     let mut handles = vec![];
-    for (protocol_name, value) in protocols {
-        if value.get("operator_num").is_some() && value["operator_num"].as_integer().unwrap() > 0 {
+    for (protocol_name, init_param) in protocols {
+        if init_param.get("operator_num").is_some()
+            && init_param["operator_num"].as_integer().unwrap() > 0
+        {
             let service = service.clone();
             let user_id = user_id.to_string();
             let user_jwt = user_jwt.to_string();
             handles.push(tokio::spawn(async move {
-                start_protocol(&service, &user_id, &user_jwt, &protocol_name, &value).await
+                init_protocol(&service, &user_id, &user_jwt, &protocol_name, &init_param).await
             }));
         }
     }
@@ -38,21 +40,21 @@ pub async fn user_init(
     Ok(())
 }
 
-async fn start_protocol(
+async fn init_protocol(
     service: &MyService,
     user_id: &str,
     user_jwt: &str,
     protocol_name: &str,
-    value: &Value,
+    init_param: &Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    if value.get("start_after").is_some() && value["start_after"].is_array() {
-        let start_after_list = value["start_after"].as_array().unwrap();
+    if init_param.get("start_after").is_some() {
+        let start_after_list = init_param["start_after"].as_array().unwrap();
         for p in start_after_list {
             wait_protocol_initialization(service, user_id, p.as_str().unwrap()).await?;
         }
     }
-    if value.get("create_entry").is_some() && value["create_entry"].is_array() {
-        let entries = value["create_entry"].as_array().unwrap();
+    if init_param.get("create_entry").is_some() {
+        let entries = init_param["create_entry"].as_array().unwrap();
         for entry in entries {
             service
                 ._user_storage_update(
@@ -67,7 +69,7 @@ async fn start_protocol(
     service
         ._user_storage_update(user_id, &is_initialized_key, &[0])
         .await?;
-    for _ in 0..value["operator_num"].as_integer().unwrap() {
+    for _ in 0..init_param["operator_num"].as_integer().unwrap() {
         _start_protocol_operator(service, user_id, user_jwt, protocol_name).await?;
     }
     wait_protocol_initialization(service, user_id, protocol_name).await?;
