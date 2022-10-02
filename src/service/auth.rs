@@ -32,6 +32,12 @@ impl crate::server::MyService {
         let token = request.metadata().get("authorization").unwrap().clone();
         let token = token.to_str().unwrap();
         let body: GenerateTokenRequest = request.into_inner();
+        if !["user", "guest"].contains(&body.privilege.as_str()) {
+            return Err(Status::permission_denied(format!(
+                "generating token with {} privilege is not allowed.",
+                body.privilege
+            )));
+        }
         let token = jsonwebtoken::decode::<AuthContent>(
             token,
             &jsonwebtoken::DecodingKey::from_secret(&self.jwt_secret),
