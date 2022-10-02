@@ -8,7 +8,7 @@ use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
 use tonic::{metadata::MetadataValue, service::Interceptor, Request, Response, Status};
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Clone)]
 pub struct CheckAuthInterceptor {
@@ -123,7 +123,10 @@ impl crate::server::MyService {
         let init_user_id = user_id.clone();
         let init_user_jwt = token.clone();
         tokio::spawn(async move {
-            user_init(service, &init_user_id, &init_user_jwt).await?;
+            match user_init(service, &init_user_id, &init_user_jwt).await {
+                Ok(_) => {}
+                Err(err) => error!("user_init: {}", err.to_string()),
+            }
             Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
         });
         let reply = Jwt { jwt: token };
