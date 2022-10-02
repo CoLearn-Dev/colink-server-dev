@@ -59,7 +59,7 @@ async fn init_protocol(
             service
                 ._user_storage_update(
                     user_id,
-                    entry["key"].as_str().unwrap(),
+                    entry["key_name"].as_str().unwrap(),
                     entry["value"].as_str().unwrap().as_bytes(),
                 )
                 .await?;
@@ -83,10 +83,10 @@ async fn wait_protocol_initialization(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let is_initialized_key = format!("_internal:protocols:{}:_is_initialized", protocol_name);
     loop {
-        let is_initialized = service
+        let res = service
             ._user_storage_read(user_id, &is_initialized_key)
-            .await?[0];
-        if is_initialized == 1 {
+            .await;
+        if res.is_ok() && res.unwrap()[0] == 1 {
             break;
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

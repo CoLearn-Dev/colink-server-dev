@@ -1,9 +1,9 @@
 use super::utils::*;
 use crate::colink_proto::*;
 pub use colink_registry_proto::UserRecord;
-use openssl::sha::sha256;
 use prost::Message;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use sha2::{Digest, Sha256};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
@@ -15,12 +15,6 @@ impl crate::server::MyService {
     pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
-        let is_initialized = self
-            ._internal_storage_read(&user_id, "_is_initialized")
-            .await?[0];
-        if is_initialized == 0 {
-            return Err(Status::unavailable("User not initialized.".to_string()));
-        }
         let task_id = Uuid::new_v4();
         let mut task = request.into_inner();
         task.decisions
@@ -190,12 +184,6 @@ impl crate::server::MyService {
     ) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "guest"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
-        let is_initialized = self
-            ._internal_storage_read(&user_id, "_is_initialized")
-            .await?[0];
-        if is_initialized == 0 {
-            return Err(Status::unavailable("User not initialized.".to_string()));
-        }
         if !self
             ._internal_storage_contains(&user_id, &format!("tasks:{}", request.get_ref().task_id))
             .await?
@@ -560,7 +548,10 @@ impl crate::server::MyService {
             .unwrap();
         msg.extend_from_slice(&verify_decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
-        let verify_signature = secp256k1::Message::from_slice(&sha256(&msg)).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(&msg);
+        let sha256 = hasher.finalize();
+        let verify_signature = secp256k1::Message::from_slice(&sha256).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(&verify_signature, &signature, &core_public_key) {
             Ok(_) => {}
@@ -614,9 +605,12 @@ impl crate::server::MyService {
         decision.encode(&mut decision_bytes).unwrap();
         msg.extend_from_slice(&decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(&msg);
+        let sha256 = hasher.finalize();
         let secp = Secp256k1::new();
         let signature = secp.sign_ecdsa(
-            &secp256k1::Message::from_slice(&sha256(&msg)).unwrap(),
+            &secp256k1::Message::from_slice(&sha256).unwrap(),
             &self.secret_key,
         );
         decision.user_consent = Some(Message::decode(&*user_consent_bytes).unwrap());

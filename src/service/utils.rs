@@ -1,6 +1,6 @@
 use crate::colink_proto::{co_link_client::CoLinkClient, UserConsent};
-use openssl::sha::sha256;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use sha2::{Digest, Sha256};
 use tonic::{
     metadata::{MetadataMap, MetadataValue},
     transport::{Certificate, Channel, ClientTlsConfig, Identity},
@@ -206,8 +206,10 @@ impl crate::server::MyService {
         user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(core_public_key_vec);
-        let verify_consent_signature =
-            secp256k1::Message::from_slice(&sha256(&user_public_key_vec)).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(&user_public_key_vec);
+        let sha256 = hasher.finalize();
+        let verify_consent_signature = secp256k1::Message::from_slice(&sha256).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(
             &verify_consent_signature,

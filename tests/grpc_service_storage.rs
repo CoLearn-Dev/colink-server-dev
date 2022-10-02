@@ -6,8 +6,8 @@ use ::colink_server::server::init_and_run_server;
 use chrono::Duration;
 use colink_proto::co_link_client::CoLinkClient;
 use colink_proto::*;
-use openssl::sha::sha256;
 use secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey};
+use sha2::{Digest, Sha256};
 use tonic::metadata::MetadataValue;
 use tonic::transport::Channel;
 use tonic::{Response, Status};
@@ -31,7 +31,10 @@ async fn send_import_user_request(
     msg.extend_from_slice(&timestamp.to_le_bytes());
     msg.extend_from_slice(&(timestamp + Duration::hours(24).num_seconds()).to_le_bytes());
     msg.extend_from_slice(&core_pub_key.serialize());
-    let signature = secp.sign_ecdsa(&Message::from_slice(&sha256(&msg)).unwrap(), &secret_key);
+    let mut hasher = Sha256::new();
+    hasher.update(&msg);
+    let sha256 = hasher.finalize();
+    let signature = secp.sign_ecdsa(&Message::from_slice(&sha256).unwrap(), &secret_key);
 
     let mut request = tonic::Request::new(UserConsent {
         public_key: public_key_vec.to_vec(),

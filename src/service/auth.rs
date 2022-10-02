@@ -42,7 +42,7 @@ impl crate::server::MyService {
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &AuthContent {
-                privilege: token.privilege,
+                privilege: body.privilege,
                 user_id: token.user_id,
                 exp: body.expiration_time,
             },
