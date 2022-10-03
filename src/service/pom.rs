@@ -38,7 +38,7 @@ impl crate::server::MyService {
             .join(protocol_name)
             .join("colink.toml");
         if std::fs::metadata(&path).is_err() {
-            let lock = self.pom_fetch_mutex.lock().await;
+            let _lock = self.pom_fetch_mutex.lock().await;
             match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                 Ok(_) => {}
                 Err(err) => {
@@ -48,7 +48,6 @@ impl crate::server::MyService {
                     )));
                 }
             }
-            drop(lock);
         }
         let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
             Ok(toml) => toml,
