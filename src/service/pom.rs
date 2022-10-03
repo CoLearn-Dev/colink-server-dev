@@ -26,13 +26,7 @@ impl crate::server::MyService {
         if file_name.is_none() || file_name.unwrap() != protocol_name {
             return Err(Status::invalid_argument("protocol_name is invalid."));
         }
-        let colink_home = if std::env::var("COLINK_HOME").is_ok() {
-            std::env::var("COLINK_HOME").unwrap()
-        } else if std::env::var("HOME").is_ok() {
-            std::env::var("HOME").unwrap() + "/.colink"
-        } else {
-            return Err(Status::not_found("colink home not found."));
-        };
+        let colink_home = self.get_colink_home()?;
         if !Path::new(&colink_home).join("protocols").exists() {
             match std::fs::create_dir_all(Path::new(&colink_home).join("protocols")) {
                 Ok(_) => {}
@@ -44,6 +38,7 @@ impl crate::server::MyService {
             .join(protocol_name)
             .join("colink.toml");
         if std::fs::metadata(&path).is_err() {
+            let _lock = self.pom_fetch_mutex.lock().await;
             match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                 Ok(_) => {}
                 Err(err) => {
@@ -152,6 +147,13 @@ async fn fetch_protocol_from_inventory(
     protocol_name: &str,
     colink_home: &str,
 ) -> Result<(), String> {
+    let path = Path::new(&colink_home)
+        .join("protocols")
+        .join(protocol_name)
+        .join("colink.toml");
+    if std::fs::metadata(&path).is_ok() {
+        return Ok(());
+    }
     let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
     let http_client = reqwest::Client::new();
     let resp = http_client.get(url).send().await;

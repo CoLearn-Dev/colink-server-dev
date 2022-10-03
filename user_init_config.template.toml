@@ -1,0 +1,21 @@
+[policy_module]
+operator_num = 1
+[[policy_module.create_entry]]
+key_name = "_policy_module:init:accept_all_tasks"
+value = "true"
+
+[remote_storage]
+operator_num = 1
+
+[remote_command]
+operator_num = 1
+
+[registry]
+operator_num = 1
+start_after = [ "policy_module", "remote_storage" ]
+[[registry.create_entry]]
+key_name = "_registry:init:registry_addr"
+value = "https://test.registry.colearn.cloud"
+[[registry.create_entry]]
+key_name = "_registry:init:registry_jwt"
+value = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwcml2aWxlZ2UiOiJndWVzdCIsInVzZXJfaWQiOiIwMzNmMTFjNGJhZGEzMzhhZWZkNjExYmE5ZmFjNWU1NmMwNmQ3NjFjNTYwNzFkYjVmYmQyYjFiNTBiMjg3MDkwYjUiLCJleHAiOjE2OTYyODI4MDh9.aiS-cEkTKhCUlNKwZqQFlGQgXIG8R6jK5tpDY35IHBo"

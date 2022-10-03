@@ -1,6 +1,6 @@
 use crate::colink_proto::{co_link_client::CoLinkClient, UserConsent};
-use openssl::sha::sha256;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use sha2::{Digest, Sha256};
 use tonic::{
     metadata::{MetadataMap, MetadataValue},
     transport::{Certificate, Channel, ClientTlsConfig, Identity},
@@ -147,6 +147,35 @@ impl crate::server::MyService {
         Ok(payload.to_vec())
     }
 
+    pub async fn _user_storage_update(
+        &self,
+        user_id: &str,
+        key_name: &str,
+        payload: &[u8],
+    ) -> Result<String, Status> {
+        match self.storage.update(user_id, key_name, payload).await {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
+    }
+
+    pub async fn _user_storage_read(
+        &self,
+        user_id: &str,
+        key_name: &str,
+    ) -> Result<Vec<u8>, Status> {
+        let entries = match self
+            .storage
+            .read_from_key_names(user_id, &[key_name.to_owned()])
+            .await
+        {
+            Ok(entries) => entries,
+            Err(e) => return Err(Status::internal(e)),
+        };
+        let payload = entries.values().next().unwrap();
+        Ok(payload.to_vec())
+    }
+
     pub fn check_user_consent(
         &self,
         user_consent: &UserConsent,
@@ -177,8 +206,10 @@ impl crate::server::MyService {
         user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(core_public_key_vec);
-        let verify_consent_signature =
-            secp256k1::Message::from_slice(&sha256(&user_public_key_vec)).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(&user_public_key_vec);
+        let sha256 = hasher.finalize();
+        let verify_consent_signature = secp256k1::Message::from_slice(&sha256).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(
             &verify_consent_signature,
@@ -198,6 +229,17 @@ impl crate::server::MyService {
 
     pub fn get_host_id(&self) -> String {
         hex::encode(&self.public_key.serialize())
+    }
+
+    pub fn get_colink_home(&self) -> Result<String, Status> {
+        let colink_home = if std::env::var("COLINK_HOME").is_ok() {
+            std::env::var("COLINK_HOME").unwrap()
+        } else if std::env::var("HOME").is_ok() {
+            std::env::var("HOME").unwrap() + "/.colink"
+        } else {
+            return Err(Status::not_found("colink home not found."));
+        };
+        Ok(colink_home)
     }
 }
 

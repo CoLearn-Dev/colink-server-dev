@@ -1,9 +1,9 @@
 use super::utils::*;
 use crate::colink_proto::*;
 pub use colink_registry_proto::UserRecord;
-use openssl::sha::sha256;
 use prost::Message;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use sha2::{Digest, Sha256};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
@@ -388,7 +388,7 @@ impl crate::server::MyService {
         Ok(())
     }
 
-    async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
+    pub async fn add_task_new_status(&self, user_id: &str, task: &Task) -> Result<(), Status> {
         let protocol_key = if task.status != "started" {
             task.protocol_name.clone()
         } else {
@@ -548,7 +548,10 @@ impl crate::server::MyService {
             .unwrap();
         msg.extend_from_slice(&verify_decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
-        let verify_signature = secp256k1::Message::from_slice(&sha256(&msg)).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(&msg);
+        let sha256 = hasher.finalize();
+        let verify_signature = secp256k1::Message::from_slice(&sha256).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(&verify_signature, &signature, &core_public_key) {
             Ok(_) => {}
@@ -578,7 +581,7 @@ impl crate::server::MyService {
         }
     }
 
-    async fn generate_decision(
+    pub async fn generate_decision(
         &self,
         is_approved: bool,
         is_rejected: bool,
@@ -602,9 +605,12 @@ impl crate::server::MyService {
         decision.encode(&mut decision_bytes).unwrap();
         msg.extend_from_slice(&decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(&msg);
+        let sha256 = hasher.finalize();
         let secp = Secp256k1::new();
         let signature = secp.sign_ecdsa(
-            &secp256k1::Message::from_slice(&sha256(&msg)).unwrap(),
+            &secp256k1::Message::from_slice(&sha256).unwrap(),
             &self.secret_key,
         );
         decision.user_consent = Some(Message::decode(&*user_consent_bytes).unwrap());

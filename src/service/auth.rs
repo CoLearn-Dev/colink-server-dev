@@ -1,13 +1,14 @@
-use crate::colink_proto::*;
+use super::user_init::user_init;
+use crate::{colink_proto::*, server::MyService};
 use chrono::TimeZone;
 use jsonwebtoken::{DecodingKey, Validation};
 use prost::Message;
 use rand::RngCore;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 use tonic::{metadata::MetadataValue, service::Interceptor, Request, Response, Status};
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Clone)]
 pub struct CheckAuthInterceptor {
@@ -31,6 +32,12 @@ impl crate::server::MyService {
         let token = request.metadata().get("authorization").unwrap().clone();
         let token = token.to_str().unwrap();
         let body: GenerateTokenRequest = request.into_inner();
+        if !["user", "guest"].contains(&body.privilege.as_str()) {
+            return Err(Status::permission_denied(format!(
+                "generating token with {} privilege is not allowed.",
+                body.privilege
+            )));
+        }
         let token = jsonwebtoken::decode::<AuthContent>(
             token,
             &jsonwebtoken::DecodingKey::from_secret(&self.jwt_secret),
@@ -41,7 +48,7 @@ impl crate::server::MyService {
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &AuthContent {
-                privilege: token.privilege,
+                privilege: body.privilege,
                 user_id: token.user_id,
                 exp: body.expiration_time,
             },
@@ -55,6 +62,7 @@ impl crate::server::MyService {
     pub async fn _import_user(
         &self,
         request: Request<UserConsent>,
+        service: Arc<MyService>,
     ) -> Result<Response<Jwt>, Status> {
         Self::check_privilege_in(request.metadata(), &["host"])?;
         let body: UserConsent = request.into_inner();
@@ -110,6 +118,17 @@ impl crate::server::MyService {
         .unwrap();
         self._host_storage_update(&format!("users:{}:user_jwt", user_id), token.as_bytes())
             .await?;
+        self._internal_storage_update(&user_id, "_is_initialized", &[0])
+            .await?;
+        let init_user_id = user_id.clone();
+        let init_user_jwt = token.clone();
+        tokio::spawn(async move {
+            match user_init(service, &init_user_id, &init_user_jwt).await {
+                Ok(_) => {}
+                Err(err) => error!("user_init: {}", err.to_string()),
+            }
+            Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
+        });
         let reply = Jwt { jwt: token };
         Ok(Response::new(reply))
     }
