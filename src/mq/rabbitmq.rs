@@ -140,26 +140,23 @@ impl crate::mq::common::MQ for RabbitMQ {
             None => return Err("MQ API Error: expected a list".to_string()),
         };
         for user in user_list {
-            match user["name"].as_str() {
-                Some(username) => {
-                    let vhost = username;
-                    let prefix = format!("{}--", self.mq_prefix);
-                    if username.starts_with(&prefix) && username.len() - prefix.len() == 16 {
-                        let resp = http_client
-                            .delete(self.mq_api.clone() + "/users/" + username)
-                            .header(reqwest::header::CONTENT_TYPE, "application/json")
-                            .send()
-                            .await;
-                        check_mq_api_resp(resp)?;
-                        let resp = http_client
-                            .delete(self.mq_api.clone() + "/vhosts/" + vhost)
-                            .header(reqwest::header::CONTENT_TYPE, "application/json")
-                            .send()
-                            .await;
-                        check_mq_api_resp(resp)?;
-                    }
+            if let Some(username) = user["name"].as_str() {
+                let vhost = username;
+                let prefix = format!("{}--", self.mq_prefix);
+                if username.starts_with(&prefix) && username.len() - prefix.len() == 16 {
+                    let resp = http_client
+                        .delete(self.mq_api.clone() + "/users/" + username)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                        .send()
+                        .await;
+                    check_mq_api_resp(resp)?;
+                    let resp = http_client
+                        .delete(self.mq_api.clone() + "/vhosts/" + vhost)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                        .send()
+                        .await;
+                    check_mq_api_resp(resp)?;
                 }
-                None => {}
             }
         }
         Ok(())
