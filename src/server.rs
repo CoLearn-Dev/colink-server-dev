@@ -257,10 +257,12 @@ async fn run_server(
     };
     let check_auth_interceptor = CheckAuthInterceptor { jwt_secret };
     let grpc_service = CoLinkServer::with_interceptor(grpc_service, check_auth_interceptor);
+    let grpc_service = tonic_web::config().enable(grpc_service);
 
     if cert.is_none() || key.is_none() {
         /* No TLS */
         Server::builder()
+            .layer(tower_http::cors::CorsLayer::permissive())
             .accept_http1(true)
             .add_service(grpc_service)
             .serve(socket_address)
@@ -285,6 +287,8 @@ async fn run_server(
         };
 
         Server::builder()
+            .layer(tower_http::cors::CorsLayer::permissive())
+            .accept_http1(true)
             .tls_config(tls)?
             .add_service(grpc_service)
             .serve(socket_address)
