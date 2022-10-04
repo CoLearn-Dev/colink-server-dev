@@ -71,7 +71,7 @@ impl crate::server::MyService {
         let user_jwt = String::from_utf8(user_jwt).unwrap();
         let process = match Command::new("bash")
             .arg("-c")
-            .arg(&*entrypoint)
+            .arg(entrypoint)
             .current_dir(
                 Path::new(&colink_home)
                     .join("protocols")
@@ -229,10 +229,10 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    return Err(format!(
+    Err(format!(
         "the inventory file of protocol {} is damaged",
         protocol_name
-    ));
+    ))
 }
 
 async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
