@@ -1,10 +1,13 @@
-on: [push]
+on:
+  release:
+    types: [released]
+  push:
 
-name: build
+name: Build
 
 jobs:
-  check:
-    runs-on: self-hosted
+  linux-x86_64:
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
@@ -14,23 +17,84 @@ jobs:
         with:
           submodules: recursive
           ssh-key: ${{ secrets.SSH_KEY }}
-      - name: SSH Agent
-        run: |
-          eval `ssh-agent`
-          ssh-add - <<< "${{ secrets.SSH_KEY }}"
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          components: rustfmt, clippy
-      - name: Check
-        run: cargo check --release --locked
+          toolchain: stable
       - name: Build
-        run: cargo build --all-targets --locked
-      - name: Format check
-        run: cargo fmt --all -- --check
-      - name: Clippy test
-        run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
-      - name: Run tests
-        run: cargo test
-        timeout-minutes: 10
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Pack
+        run: |
+          cp target/x86_64-unknown-linux-gnu/release/colink-server ./
+          tar -zcvf colink-server-linux-x86_64.tar.gz colink-server README.md user_init_config.template.toml
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: colink-server-linux-x86_64.tar.gz
+          asset_name: colink-server-linux-x86_64.tar.gz
+          asset_content_type: application/tar+gzip
+
+  macos-x86_64:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.SSH_KEY }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Build
+        run: cargo build --release --target x86_64-apple-darwin
+      - name: Pack
+        run: |
+          cp target/x86_64-apple-darwin/release/colink-server ./
+          tar -zcvf colink-server-macos-x86_64.tar.gz colink-server README.md user_init_config.template.toml
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: colink-server-macos-x86_64.tar.gz
+          asset_name: colink-server-macos-x86_64.tar.gz
+          asset_content_type: application/tar+gzip
+
+  windows-x86_64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.SSH_KEY }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-gnu
+      - name: Pack
+        run: |
+          cp target/x86_64-pc-windows-gnu/release/colink-server ./
+          tar -zcvf colink-server-windows-x86_64.tar.gz colink-server README.md user_init_config.template.toml
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: colink-server-windows-x86_64.tar.gz
+          asset_name: colink-server-windows-x86_64.tar.gz
+          asset_content_type: application/tar+gzip
