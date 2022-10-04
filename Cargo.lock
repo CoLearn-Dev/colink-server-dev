@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "colink-server"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "async-trait",
  "chrono",
@@ -439,6 +439,8 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-build",
+ "tonic-web",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -2150,6 +2152,24 @@ dependencies = [
  "prost-build",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tonic-web"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3864b1194b9b39ba01fc8f6640dc5554ded967ccaebdd8033341987f6c776431"
+dependencies = [
+ "base64 0.13.0",
+ "bytes",
+ "futures-core",
+ "http",
+ "http-body",
+ "hyper",
+ "pin-project",
+ "tonic",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]
