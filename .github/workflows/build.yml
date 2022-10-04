@@ -84,10 +84,10 @@ jobs:
         with:
           toolchain: stable
       - name: Build
-        run: cargo build --release --target x86_64-pc-windows-gnu
+        run: cargo build --release --target x86_64-pc-windows-msvc
       - name: Pack
         run: |
-          cp target/x86_64-pc-windows-gnu/release/colink-server ./
+          cp target/x86_64-pc-windows-msvc/release/colink-server ./
           tar -zcvf colink-server-windows-x86_64.tar.gz colink-server README.md user_init_config.template.toml
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
