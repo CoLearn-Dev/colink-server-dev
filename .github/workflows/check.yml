@@ -8,7 +8,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    service:
+    services:
       rabbitmq:
         image: rabbitmq:3.8-management
         ports:
