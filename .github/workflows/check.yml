@@ -4,10 +4,16 @@ name: Check
 
 jobs:
   check:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
+    service:
+      rabbitmq:
+        image: rabbitmq:3.8-management
+        ports:
+          - 5672:5672      
+          - 15672:15672
     steps:
       - name: Checkout
         uses: actions/checkout@v3
