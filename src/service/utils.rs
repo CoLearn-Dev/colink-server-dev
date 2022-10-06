@@ -206,10 +206,8 @@ impl crate::server::MyService {
         user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(core_public_key_vec);
-        let mut hasher = Sha256::new();
-        hasher.update(&user_public_key_vec);
-        let sha256 = hasher.finalize();
-        let verify_consent_signature = secp256k1::Message::from_slice(&sha256).unwrap();
+        let verify_consent_signature =
+            secp256k1::Message::from_slice(&Sha256::digest(&user_public_key_vec)).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(
             &verify_consent_signature,

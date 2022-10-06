@@ -31,10 +31,10 @@ async fn send_import_user_request(
     msg.extend_from_slice(&timestamp.to_le_bytes());
     msg.extend_from_slice(&(timestamp + Duration::hours(24).num_seconds()).to_le_bytes());
     msg.extend_from_slice(&core_pub_key.serialize());
-    let mut hasher = Sha256::new();
-    hasher.update(&msg);
-    let sha256 = hasher.finalize();
-    let signature = secp.sign_ecdsa(&Message::from_slice(&sha256).unwrap(), &secret_key);
+    let signature = secp.sign_ecdsa(
+        &Message::from_slice(&Sha256::digest(&msg)).unwrap(),
+        &secret_key,
+    );
 
     let mut request = tonic::Request::new(UserConsent {
         public_key: public_key_vec.to_vec(),

@@ -88,10 +88,10 @@ impl crate::subscription::common::StorageWithSubscription for StorageWithMQSubsc
             .await
             .insert(queue_name.clone(), user_id_key_name.clone());
         let routing_key = if user_id_key_name.len() > 200 {
-            let mut hasher = Sha256::new();
-            hasher.update(user_id_key_name.as_bytes());
-            let sha256 = hasher.finalize();
-            format!("sha256:{}", hex::encode(sha256))
+            format!(
+                "sha256:{}",
+                hex::encode(Sha256::digest(user_id_key_name.as_bytes()))
+            )
         } else {
             user_id_key_name.clone()
         };
@@ -200,10 +200,10 @@ impl StorageWithMQSubscription {
             message.encode(&mut payload).unwrap();
             let mq_uri = self.get_mq_uri(user_id).await?;
             let routing_key = if user_id_key_name.len() > 200 {
-                let mut hasher = Sha256::new();
-                hasher.update(user_id_key_name.as_bytes());
-                let sha256 = hasher.finalize();
-                format!("sha256:{}", hex::encode(sha256))
+                format!(
+                    "sha256:{}",
+                    hex::encode(Sha256::digest(user_id_key_name.as_bytes()))
+                )
             } else {
                 user_id_key_name.clone()
             };
