@@ -1,5 +1,8 @@
 use crate::colink_proto::*;
+use futures_lite::StreamExt;
+use sha2::{Digest, Sha256};
 use std::{
+    io::{self, Seek, SeekFrom, Write},
     path::Path,
     process::{Command, Stdio},
 };
@@ -193,8 +196,13 @@ async fn fetch_protocol_from_inventory(
                 && binary.get("sha256").is_some()
                 && binary["sha256"].as_str().is_some()
             {
-                // TODO
-                return Err("Not implemented.".to_string());
+                download_tgz(
+                    binary["url"].as_str().unwrap(),
+                    binary["sha256"].as_str().unwrap(),
+                    path.to_str().unwrap(),
+                )
+                .await?;
+                return Ok(());
             }
         }
     }
@@ -206,8 +214,13 @@ async fn fetch_protocol_from_inventory(
                     && source.get("sha256").is_some()
                     && source["sha256"].as_str().is_some()
                 {
-                    // TODO
-                    return Err("Not implemented.".to_string());
+                    download_tgz(
+                        source["url"].as_str().unwrap(),
+                        source["sha256"].as_str().unwrap(),
+                        path.to_str().unwrap(),
+                    )
+                    .await?;
+                    return Ok(());
                 }
             }
         }
@@ -257,5 +270,56 @@ async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), Strin
     if !git_checkout.status.success() {
         return Err(format!("checkout error: commit {}", commit));
     }
+    Ok(())
+}
+
+async fn download_tgz(url: &str, sha256: &str, path: &str) -> Result<(), String> {
+    let mut file = match tempfile::tempfile() {
+        Ok(file) => file,
+        Err(err) => return Err(err.to_string()),
+    };
+    let http_client = reqwest::Client::new();
+    let res = match http_client.get(url).send().await {
+        Ok(res) => res,
+        Err(err) => return Err(err.to_string()),
+    };
+    let mut stream = res.bytes_stream();
+    while let Some(item) = stream.next().await {
+        let chunk = match item {
+            Ok(chunk) => chunk,
+            Err(err) => return Err(err.to_string()),
+        };
+        match file.write_all(&chunk) {
+            Ok(_) => {}
+            Err(err) => return Err(err.to_string()),
+        };
+    }
+    match file.seek(SeekFrom::Start(0)) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    let mut hasher = Sha256::new();
+    match io::copy(&mut file, &mut hasher) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    };
+    let hash = hasher.finalize();
+    let file_sha256 = hex::encode(hash);
+    if file_sha256 != sha256 {
+        return Err(format!(
+            "file checksum mismatch: expected {}, actual {}",
+            sha256, file_sha256
+        ));
+    }
+    match file.seek(SeekFrom::Start(0)) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    let tar = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(tar);
+    match archive.unpack(path) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    };
     Ok(())
 }
