@@ -604,7 +604,7 @@ impl crate::server::MyService {
         msg.extend_from_slice(&user_consent_bytes);
         let secp = Secp256k1::new();
         let signature = secp.sign_ecdsa(
-            &secp256k1::Message::from_slice(&&Sha256::digest(&msg)).unwrap(),
+            &secp256k1::Message::from_slice(&Sha256::digest(&msg)).unwrap(),
             &self.secret_key,
         );
         decision.user_consent = Some(Message::decode(&*user_consent_bytes).unwrap());
