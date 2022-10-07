@@ -1,11 +1,12 @@
 [package]
 name = "colink-server"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
 chrono = "0.4"
+flate2 = "1.0"
 futures-lite = "1.12"
 hex = "0.4"
 jsonwebtoken = "7.2"
@@ -13,12 +14,14 @@ lapin = "2.1"
 passwords = "3.1"
 prost = "0.10"
 rand = { version = "0.8.4", features = ["std_rng"] }
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls-native-roots"] }
 secp256k1 = { version = "0.21.2", features = ["rand-std"] }
 serde = "1.0"
 serde_json = "1.0"
 sha2 = "0.10"
 structopt = "0.3"
+tar = "0.4"
+tempfile = "3"
 tokio = { version = "1.18", features = ["macros", "rt-multi-thread", "rt", "fs"] }
 toml = "0.5"
 tonic = { version = "0.7", features = ["tls", "tls-roots"] }

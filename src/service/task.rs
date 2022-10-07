@@ -548,10 +548,7 @@ impl crate::server::MyService {
             .unwrap();
         msg.extend_from_slice(&verify_decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
-        let mut hasher = Sha256::new();
-        hasher.update(&msg);
-        let sha256 = hasher.finalize();
-        let verify_signature = secp256k1::Message::from_slice(&sha256).unwrap();
+        let verify_signature = secp256k1::Message::from_slice(&Sha256::digest(&msg)).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(&verify_signature, &signature, &core_public_key) {
             Ok(_) => {}
@@ -605,12 +602,9 @@ impl crate::server::MyService {
         decision.encode(&mut decision_bytes).unwrap();
         msg.extend_from_slice(&decision_bytes);
         msg.extend_from_slice(&user_consent_bytes);
-        let mut hasher = Sha256::new();
-        hasher.update(&msg);
-        let sha256 = hasher.finalize();
         let secp = Secp256k1::new();
         let signature = secp.sign_ecdsa(
-            &secp256k1::Message::from_slice(&sha256).unwrap(),
+            &secp256k1::Message::from_slice(&Sha256::digest(&msg)).unwrap(),
             &self.secret_key,
         );
         decision.user_consent = Some(Message::decode(&*user_consent_bytes).unwrap());

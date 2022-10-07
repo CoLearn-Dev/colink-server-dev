@@ -1,3 +1,4 @@
+use super::utils::{download_tgz, fetch_from_git};
 use crate::colink_proto::*;
 use std::{
     path::Path,
@@ -71,7 +72,7 @@ impl crate::server::MyService {
         let user_jwt = String::from_utf8(user_jwt).unwrap();
         let process = match Command::new("bash")
             .arg("-c")
-            .arg(&*entrypoint)
+            .arg(entrypoint)
             .current_dir(
                 Path::new(&colink_home)
                     .join("protocols")
@@ -193,8 +194,13 @@ async fn fetch_protocol_from_inventory(
                 && binary.get("sha256").is_some()
                 && binary["sha256"].as_str().is_some()
             {
-                // TODO
-                return Err("Not implemented.".to_string());
+                download_tgz(
+                    binary["url"].as_str().unwrap(),
+                    binary["sha256"].as_str().unwrap(),
+                    path.to_str().unwrap(),
+                )
+                .await?;
+                return Ok(());
             }
         }
     }
@@ -206,8 +212,13 @@ async fn fetch_protocol_from_inventory(
                     && source.get("sha256").is_some()
                     && source["sha256"].as_str().is_some()
                 {
-                    // TODO
-                    return Err("Not implemented.".to_string());
+                    download_tgz(
+                        source["url"].as_str().unwrap(),
+                        source["sha256"].as_str().unwrap(),
+                        path.to_str().unwrap(),
+                    )
+                    .await?;
+                    return Ok(());
                 }
             }
         }
@@ -229,33 +240,8 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    return Err(format!(
+    Err(format!(
         "the inventory file of protocol {} is damaged",
         protocol_name
-    ));
-}
-
-async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
-    let git_clone = match Command::new("git")
-        .args(["clone", "--recursive", url, path])
-        .output()
-    {
-        Ok(git_clone) => git_clone,
-        Err(err) => return Err(err.to_string()),
-    };
-    if !git_clone.status.success() {
-        return Err(format!("fail to fetch from {}", url));
-    }
-    let git_checkout = match Command::new("git")
-        .args(["checkout", commit])
-        .current_dir(path)
-        .output()
-    {
-        Ok(git_checkout) => git_checkout,
-        Err(err) => return Err(err.to_string()),
-    };
-    if !git_checkout.status.success() {
-        return Err(format!("checkout error: commit {}", commit));
-    }
-    Ok(())
+    ))
 }

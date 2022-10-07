@@ -1,6 +1,9 @@
 use crate::colink_proto::{co_link_client::CoLinkClient, UserConsent};
+use futures_lite::StreamExt;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
 use sha2::{Digest, Sha256};
+use std::io::{self, Seek, SeekFrom, Write};
+use std::process::Command;
 use tonic::{
     metadata::{MetadataMap, MetadataValue},
     transport::{Certificate, Channel, ClientTlsConfig, Identity},
@@ -206,10 +209,8 @@ impl crate::server::MyService {
         user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
         user_public_key_vec.extend_from_slice(core_public_key_vec);
-        let mut hasher = Sha256::new();
-        hasher.update(&user_public_key_vec);
-        let sha256 = hasher.finalize();
-        let verify_consent_signature = secp256k1::Message::from_slice(&sha256).unwrap();
+        let verify_consent_signature =
+            secp256k1::Message::from_slice(&Sha256::digest(&user_public_key_vec)).unwrap();
         let secp = Secp256k1::new();
         match secp.verify_ecdsa(
             &verify_consent_signature,
@@ -248,4 +249,80 @@ pub fn generate_request<T>(jwt: &str, data: T) -> tonic::Request<T> {
     let user_token = MetadataValue::try_from(jwt).unwrap();
     request.metadata_mut().insert("authorization", user_token);
     request
+}
+
+pub async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), String> {
+    let git_clone = match Command::new("git")
+        .args(["clone", "--recursive", url, path])
+        .output()
+    {
+        Ok(git_clone) => git_clone,
+        Err(err) => return Err(err.to_string()),
+    };
+    if !git_clone.status.success() {
+        return Err(format!("fail to fetch from {}", url));
+    }
+    let git_checkout = match Command::new("git")
+        .args(["checkout", commit])
+        .current_dir(path)
+        .output()
+    {
+        Ok(git_checkout) => git_checkout,
+        Err(err) => return Err(err.to_string()),
+    };
+    if !git_checkout.status.success() {
+        return Err(format!("checkout error: commit {}", commit));
+    }
+    Ok(())
+}
+
+pub async fn download_tgz(url: &str, sha256: &str, path: &str) -> Result<(), String> {
+    let mut file = match tempfile::tempfile() {
+        Ok(file) => file,
+        Err(err) => return Err(err.to_string()),
+    };
+    let http_client = reqwest::Client::new();
+    let res = match http_client.get(url).send().await {
+        Ok(res) => res,
+        Err(err) => return Err(err.to_string()),
+    };
+    let mut stream = res.bytes_stream();
+    while let Some(item) = stream.next().await {
+        let chunk = match item {
+            Ok(chunk) => chunk,
+            Err(err) => return Err(err.to_string()),
+        };
+        match file.write_all(&chunk) {
+            Ok(_) => {}
+            Err(err) => return Err(err.to_string()),
+        };
+    }
+    match file.seek(SeekFrom::Start(0)) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    let mut hasher = Sha256::new();
+    match io::copy(&mut file, &mut hasher) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    };
+    let hash = hasher.finalize();
+    let file_sha256 = hex::encode(hash);
+    if file_sha256 != sha256 {
+        return Err(format!(
+            "file checksum mismatch: expected {}, actual {}",
+            sha256, file_sha256
+        ));
+    }
+    match file.seek(SeekFrom::Start(0)) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    let tar = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(tar);
+    match archive.unpack(path) {
+        Ok(_) => {}
+        Err(err) => return Err(err.to_string()),
+    };
+    Ok(())
 }
