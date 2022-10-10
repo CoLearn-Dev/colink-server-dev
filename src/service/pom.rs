@@ -1,5 +1,6 @@
 use super::utils::{download_tgz, fetch_from_git};
 use crate::colink_proto::*;
+use prost::Message;
 use std::{
     path::Path,
     process::{Command, Stdio},
@@ -11,8 +12,8 @@ use uuid::Uuid;
 impl crate::server::MyService {
     pub async fn _start_protocol_operator(
         &self,
-        request: Request<ProtocolOperatorInstance>,
-    ) -> Result<Response<ProtocolOperatorInstance>, Status> {
+        request: Request<StartProtocolOperatorRequest>,
+    ) -> Result<Response<ProtocolOperatorInstanceId>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         if privilege != "host"
@@ -34,79 +35,123 @@ impl crate::server::MyService {
                 Err(err) => return Err(Status::internal(err.to_string())),
             }
         }
-        let path = Path::new(&colink_home)
-            .join("protocols")
-            .join(protocol_name)
-            .join("colink.toml");
-        if std::fs::metadata(&path).is_err() {
-            let _lock = self.pom_fetch_mutex.lock().await;
-            match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(Status::not_found(&format!(
-                        "protocol {} not found: {}",
-                        protocol_name, err
+        let lock = self.lock(&format!("_pom:{}", protocol_name)).await?;
+        let res = async {
+            let list_key = format!("protocol_operator_groups:{}", protocol_name);
+            let mut list = if self
+                ._internal_storage_contains(&request.get_ref().user_id, &list_key)
+                .await?
+            {
+                let list = self
+                    ._internal_storage_read(&request.get_ref().user_id, &list_key)
+                    .await?;
+                Message::decode(&*list).unwrap()
+            } else {
+                ListOfString { list: vec![] }
+            };
+            if request.get_ref().upgrade {
+                if list.list.is_empty() {
+                    match std::fs::remove_dir_all(
+                        Path::new(&colink_home)
+                            .join("protocols")
+                            .join(protocol_name),
+                    ) {
+                        Ok(_) => {}
+                        Err(err) => return Err(Status::internal(err.to_string())),
+                    }
+                } else {
+                    return Err(Status::aborted(format!(
+                        "Protocol {} has running instances.",
+                        protocol_name
                     )));
                 }
             }
-        }
-        let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
-            Ok(toml) => toml,
-            Err(err) => return Err(Status::internal(err.to_string())),
-        };
-        if self.core_uri.is_none() {
-            return Err(Status::internal("core_uri not found."));
-        }
-        let core_addr = self.core_uri.as_ref().unwrap();
-        if toml.get("package").is_none() || toml["package"].get("entrypoint").is_none() {
-            return Err(Status::not_found("entrypoint not found."));
-        }
-        let entrypoint = toml["package"]["entrypoint"].as_str();
-        if entrypoint.is_none() {
-            return Err(Status::not_found("entrypoint not found."));
-        }
-        let entrypoint = entrypoint.unwrap();
-        let user_jwt = self
-            ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
-            .await?;
-        let user_jwt = String::from_utf8(user_jwt).unwrap();
-        let process = match Command::new("bash")
-            .arg("-c")
-            .arg(entrypoint)
-            .current_dir(
-                Path::new(&colink_home)
-                    .join("protocols")
-                    .join(protocol_name),
+            let path = Path::new(&colink_home)
+                .join("protocols")
+                .join(protocol_name)
+                .join("colink.toml");
+            if std::fs::metadata(&path).is_err() {
+                match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(Status::not_found(&format!(
+                            "protocol {} not found: {}",
+                            protocol_name, err
+                        )));
+                    }
+                }
+            }
+            let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
+                Ok(toml) => toml,
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+            if self.core_uri.is_none() {
+                return Err(Status::internal("core_uri not found."));
+            }
+            let core_addr = self.core_uri.as_ref().unwrap();
+            if toml.get("package").is_none() || toml["package"].get("entrypoint").is_none() {
+                return Err(Status::not_found("entrypoint not found."));
+            }
+            let entrypoint = toml["package"]["entrypoint"].as_str();
+            if entrypoint.is_none() {
+                return Err(Status::not_found("entrypoint not found."));
+            }
+            let entrypoint = entrypoint.unwrap();
+            let user_jwt = self
+                ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
+                .await?;
+            let user_jwt = String::from_utf8(user_jwt).unwrap();
+            let process = match Command::new("bash")
+                .arg("-c")
+                .arg(entrypoint)
+                .current_dir(
+                    Path::new(&colink_home)
+                        .join("protocols")
+                        .join(protocol_name),
+                )
+                .env("COLINK_CORE_ADDR", core_addr)
+                .env("COLINK_JWT", user_jwt)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(child) => child,
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+            let pid = process.id().to_string();
+            self._host_storage_update(
+                &format!("protocol_operator_instances:{}:user_id", instance_id),
+                request.get_ref().user_id.as_bytes(),
             )
-            .env("COLINK_CORE_ADDR", core_addr)
-            .env("COLINK_JWT", user_jwt)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(err) => return Err(Status::internal(err.to_string())),
-        };
-        let pid = process.id().to_string();
-        self._host_storage_update(
-            &format!("protocol_operator_instances:{}:user_id", instance_id),
-            request.get_ref().user_id.as_bytes(),
-        )
-        .await?;
-        self._host_storage_update(
-            &format!("protocol_operator_instances:{}:pid", instance_id),
-            pid.as_bytes(),
-        )
-        .await?;
-        Ok(Response::new(ProtocolOperatorInstance {
+            .await?;
+            self._host_storage_update(
+                &format!("protocol_operator_instances:{}:pid", instance_id),
+                pid.as_bytes(),
+            )
+            .await?;
+            self._host_storage_update(
+                &format!("protocol_operator_instances:{}:protocol_name", instance_id),
+                protocol_name.as_bytes(),
+            )
+            .await?;
+            list.list.push(instance_id.to_string());
+            let mut payload = vec![];
+            list.encode(&mut payload).unwrap();
+            self._internal_storage_update(&request.get_ref().user_id, &list_key, &payload)
+                .await?;
+            Ok::<(), Status>(())
+        }
+        .await;
+        self.unlock(lock).await?;
+        res?;
+        Ok(Response::new(ProtocolOperatorInstanceId {
             instance_id: instance_id.to_string(),
-            ..Default::default()
         }))
     }
 
     pub async fn _stop_protocol_operator(
         &self,
-        request: Request<ProtocolOperatorInstance>,
+        request: Request<ProtocolOperatorInstanceId>,
     ) -> Result<Response<Empty>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
@@ -138,6 +183,30 @@ impl crate::server::MyService {
             Ok(_) => {}
             Err(err) => return Err(Status::internal(err.to_string())),
         };
+        let protocol_name = self
+            ._host_storage_read(&format!(
+                "protocol_operator_instances:{}:protocol_name",
+                request.get_ref().instance_id
+            ))
+            .await?;
+        let protocol_name = String::from_utf8(protocol_name).unwrap();
+        let list_key = format!("protocol_operator_groups:{}", protocol_name);
+        let lock = self.lock(&format!("_pom:{}", protocol_name)).await?;
+        let res = async {
+            let mut list: ListOfString = {
+                let list = self._internal_storage_read(&user_id, &list_key).await?;
+                Message::decode(&*list).unwrap()
+            };
+            list.list.retain(|x| x != &request.get_ref().instance_id);
+            let mut payload = vec![];
+            list.encode(&mut payload).unwrap();
+            self._internal_storage_update(&user_id, &list_key, &payload)
+                .await?;
+            Ok::<(), Status>(())
+        }
+        .await;
+        self.unlock(lock).await?;
+        res?;
         Ok(Response::new(Empty::default()))
     }
 }

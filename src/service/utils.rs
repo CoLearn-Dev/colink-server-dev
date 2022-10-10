@@ -1,5 +1,6 @@
 use crate::colink_proto::{co_link_client::CoLinkClient, UserConsent};
 use futures_lite::StreamExt;
+use rand::Rng;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
 use sha2::{Digest, Sha256};
 use std::io::{self, Seek, SeekFrom, Write};
@@ -122,6 +123,21 @@ impl crate::server::MyService {
             .is_ok())
     }
 
+    pub async fn _host_storage_create(
+        &self,
+        key_name: &str,
+        payload: &[u8],
+    ) -> Result<String, Status> {
+        match self
+            .storage
+            .create(&self.get_host_id(), key_name, payload)
+            .await
+        {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
+    }
+
     pub async fn _host_storage_update(
         &self,
         key_name: &str,
@@ -148,6 +164,13 @@ impl crate::server::MyService {
         };
         let payload = entries.values().next().unwrap();
         Ok(payload.to_vec())
+    }
+
+    pub async fn _host_storage_delete(&self, key_name: &str) -> Result<String, Status> {
+        match self.storage.delete(&self.get_host_id(), key_name).await {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
     }
 
     pub async fn _user_storage_update(
@@ -242,6 +265,50 @@ impl crate::server::MyService {
         };
         Ok(colink_home)
     }
+
+    pub async fn lock(&self, key: &str) -> Result<CoLinkLockToken, Status> {
+        let mut sleep_time_cap = 1;
+        let rnd_num = rand::thread_rng().gen::<i32>();
+        loop {
+            if self
+                ._host_storage_create(&format!("_lock:{}", key), &rnd_num.to_le_bytes())
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            let st = rand::thread_rng().gen_range(0..sleep_time_cap);
+            tokio::time::sleep(tokio::time::Duration::from_millis(st)).await;
+            sleep_time_cap *= 2;
+            if sleep_time_cap > 100 {
+                sleep_time_cap = 100;
+            }
+        }
+        Ok(CoLinkLockToken {
+            key: key.to_string(),
+            rnd_num,
+        })
+    }
+
+    pub async fn unlock(&self, lock_token: CoLinkLockToken) -> Result<(), Status> {
+        let rnd_num_in_storage = self
+            ._host_storage_read(&format!("_lock:{}", lock_token.key))
+            .await?;
+        let rnd_num_in_storage =
+            i32::from_le_bytes(<[u8; 4]>::try_from(rnd_num_in_storage).unwrap());
+        if rnd_num_in_storage == lock_token.rnd_num {
+            self._host_storage_delete(&format!("_lock:{}", lock_token.key))
+                .await?;
+        } else {
+            return Err(Status::internal("Internal lock: Invalid token."));
+        }
+        Ok(())
+    }
+}
+
+pub struct CoLinkLockToken {
+    key: String,
+    rnd_num: i32,
 }
 
 pub fn generate_request<T>(jwt: &str, data: T) -> tonic::Request<T> {
