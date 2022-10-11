@@ -28,6 +28,7 @@ impl crate::server::MyService {
     ) -> Result<Response<StorageEntries>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let body: StorageEntries = request.into_inner();
         let entries: Vec<StorageEntry> = body.entries;
         let mut key_names_vec: Vec<String> = Vec::new();
@@ -48,6 +49,12 @@ impl crate::server::MyService {
             } else if !key_name.is_empty() {
                 key_names_vec.push(key_name);
             } else {
+                if privilege != "host" && !key_path.starts_with(&format!("{}::", user_id)) {
+                    return Err(Status::permission_denied(format!(
+                        "no permission to read from {}",
+                        key_path
+                    )));
+                }
                 key_paths_vec.push(key_path);
             }
         }
@@ -146,10 +153,11 @@ impl crate::server::MyService {
     ) -> Result<Response<StorageEntries>, Status> {
         Self::check_privilege_in(request.metadata(), &["user", "host"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let body: ReadKeysRequest = request.into_inner();
         let prefix: String = body.prefix;
         let include_history: bool = body.include_history;
-        if !prefix.starts_with(&user_id) {
+        if privilege != "host" && !prefix.starts_with(&user_id) {
             return Err(Status::invalid_argument(
                 "prefix must start with the given user_id",
             ));
