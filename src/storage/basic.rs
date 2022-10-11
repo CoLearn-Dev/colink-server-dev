@@ -210,19 +210,3 @@ fn _update_dir(maps: &mut StorageMap, user_id: &str, key_name: &str) {
         path2 = path2 + ":" + split[i + 1];
     }
 }
-
-fn _merge_key_list_directories(
-    key_list: &HashSet<String>,
-    directories: &HashSet<String>,
-) -> Vec<String> {
-    let mut ans = vec![];
-    let key_list = key_list.clone();
-    let mut directories = directories.clone();
-    for key in key_list {
-        let dir = key[..key.rfind('@').unwrap()].to_string() + "@0";
-        directories.remove(&dir);
-        ans.push(key);
-    }
-    ans.append(&mut Vec::from_iter(directories));
-    ans
-}
