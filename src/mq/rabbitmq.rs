@@ -239,13 +239,7 @@ impl crate::mq::common::MQ for RabbitMQ {
 
 impl RabbitMQ {
     async fn connect(&self, user_uri: &str) -> Result<Channel, String> {
-        let user_uri = match url::Url::parse(user_uri) {
-            Ok(uri) => uri,
-            Err(e) => return Err(format!("MQ URI Parse Error: {}", e)),
-        };
-        let vhost_path = user_uri.path();
-        let uri = self.mq_amqp.clone() + vhost_path;
-        let mq = match Connection::connect(&uri, ConnectionProperties::default()).await {
+        let mq = match Connection::connect(user_uri, ConnectionProperties::default()).await {
             Ok(mq) => mq,
             Err(e) => return Err(format!("MQ Connection Error: {}", e)),
         };
