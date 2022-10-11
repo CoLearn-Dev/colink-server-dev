@@ -25,14 +25,16 @@ impl crate::storage::common::Storage for BasicStorage {
         let key_path_created = format!("{}::{}@{}", user_id, key_name, timestamp);
         let user_id_key_name = format!("{}::{}", user_id, key_name);
         debug!("{}", user_id_key_name);
-        if maps.key_name_to_timestamp.contains_key(&user_id_key_name)
-            && maps.key_path_to_value.contains_key(&format!(
+        if maps.key_name_to_timestamp.contains_key(&user_id_key_name) {
+            if maps.key_path_to_value.contains_key(&format!(
                 "{}@{}",
                 user_id_key_name,
                 maps.key_name_to_timestamp.get(&user_id_key_name).unwrap()
-            ))
-        {
-            return Err(format!("Key name already exists: {}", user_id_key_name));
+            )) {
+                return Err(format!("Key name already exists: {}", user_id_key_name));
+            }
+        } else {
+            _update_dir(&mut maps, user_id, key_name);
         }
         maps.key_path_to_value
             .insert(key_path_created.clone(), value.to_vec());
@@ -51,7 +53,6 @@ impl crate::storage::common::Storage for BasicStorage {
             key_list_set.1.insert(key_path_created.clone());
             maps.path_to_key_paths.insert(keys_directory, key_list_set);
         }
-        _update_dir(&mut maps, user_id, key_name);
         Ok(key_path_created)
     }
 
@@ -132,6 +133,9 @@ impl crate::storage::common::Storage for BasicStorage {
             .key_name_to_timestamp
             .insert(user_id_key_name.clone(), timestamp)
             .unwrap_or(0_i64);
+        if old_timestamp == 0 {
+            _update_dir(&mut maps, user_id, key_name);
+        }
         let prefix = get_prefix(key_name);
         let keys_directory = format!("{}::{}", user_id, prefix);
         let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
@@ -153,9 +157,6 @@ impl crate::storage::common::Storage for BasicStorage {
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
             maps.path_to_key_paths.insert(keys_directory, key_list_set);
-        }
-        if old_timestamp == 0 {
-            _update_dir(&mut maps, user_id, key_name);
         }
         Ok(key_path_created)
     }
