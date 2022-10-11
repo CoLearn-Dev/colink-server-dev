@@ -2,11 +2,13 @@ use super::utils::{download_tgz, fetch_from_git};
 use crate::colink_proto::*;
 use prost::Message;
 use std::{
+    io::Write,
     path::Path,
     process::{Command, Stdio},
 };
 use toml::Value;
 use tonic::{Request, Response, Status};
+use tracing::error;
 use uuid::Uuid;
 
 impl crate::server::MyService {
@@ -35,6 +37,9 @@ impl crate::server::MyService {
                 Err(err) => return Err(Status::internal(err.to_string())),
             }
         }
+        let protocol_home = Path::new(&colink_home)
+            .join("protocols")
+            .join(protocol_name);
         let lock = self.lock(&format!("_pom:{}", protocol_name)).await?;
         let res = async {
             let list_key = format!("protocol_operator_groups:{}", protocol_name);
@@ -51,11 +56,7 @@ impl crate::server::MyService {
             };
             if request.get_ref().upgrade {
                 if list.list.is_empty() {
-                    match std::fs::remove_dir_all(
-                        Path::new(&colink_home)
-                            .join("protocols")
-                            .join(protocol_name),
-                    ) {
+                    match std::fs::remove_dir_all(&protocol_home) {
                         Ok(_) => {}
                         Err(err) => return Err(Status::internal(err.to_string())),
                     }
@@ -66,11 +67,8 @@ impl crate::server::MyService {
                     )));
                 }
             }
-            let path = Path::new(&colink_home)
-                .join("protocols")
-                .join(protocol_name)
-                .join("colink.toml");
-            if std::fs::metadata(&path).is_err() {
+            let toml_path = protocol_home.join("colink.toml");
+            if std::fs::metadata(&toml_path).is_err() {
                 match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                     Ok(_) => {}
                     Err(err) => {
@@ -81,7 +79,10 @@ impl crate::server::MyService {
                     }
                 }
             }
-            let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
+            let toml = match std::fs::read_to_string(&toml_path)
+                .unwrap()
+                .parse::<Value>()
+            {
                 Ok(toml) => toml,
                 Err(err) => return Err(Status::internal(err.to_string())),
             };
@@ -97,6 +98,33 @@ impl crate::server::MyService {
                 return Err(Status::not_found("entrypoint not found."));
             }
             let entrypoint = entrypoint.unwrap();
+            if toml["package"].get("install_script").is_some() {
+                let install_script = toml["package"]["install_script"].as_str();
+                if install_script.is_none() {
+                    return Err(Status::internal("invalid install_script"));
+                }
+                let install_script = install_script.unwrap();
+                let init_file = protocol_home.join(".install_timestamp");
+                if std::fs::metadata(&init_file).is_err() {
+                    match Command::new("bash")
+                        .arg("-c")
+                        .arg(install_script)
+                        .current_dir(&protocol_home)
+                        .output()
+                    {
+                        Ok(output) => {
+                            if !output.status.success() {
+                                error!("install_script fail: {:?}", output.stderr);
+                                return Err(Status::internal("install_script fail".to_string()));
+                            }
+                        }
+                        Err(err) => return Err(Status::internal(err.to_string())),
+                    };
+                    let mut file = std::fs::File::create(init_file).unwrap();
+                    file.write_all(chrono::Utc::now().timestamp().to_string().as_bytes())
+                        .unwrap();
+                }
+            }
             let user_jwt = self
                 ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
                 .await?;
@@ -104,11 +132,7 @@ impl crate::server::MyService {
             let process = match Command::new("bash")
                 .arg("-c")
                 .arg(entrypoint)
-                .current_dir(
-                    Path::new(&colink_home)
-                        .join("protocols")
-                        .join(protocol_name),
-                )
+                .current_dir(&protocol_home)
                 .env("COLINK_CORE_ADDR", core_addr)
                 .env("COLINK_JWT", user_jwt)
                 .stdout(Stdio::null())
@@ -217,13 +241,6 @@ async fn fetch_protocol_from_inventory(
     protocol_name: &str,
     colink_home: &str,
 ) -> Result<(), String> {
-    let path = Path::new(&colink_home)
-        .join("protocols")
-        .join(protocol_name)
-        .join("colink.toml");
-    if std::fs::metadata(&path).is_ok() {
-        return Ok(());
-    }
     let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
     let http_client = reqwest::Client::new();
     let resp = http_client.get(url).send().await;
@@ -242,7 +259,7 @@ async fn fetch_protocol_from_inventory(
             return Err(err.to_string());
         }
     };
-    let path = Path::new(&colink_home)
+    let protocol_home = Path::new(&colink_home)
         .join("protocols")
         .join(protocol_name);
     if toml.get("binary").is_some()
@@ -266,7 +283,7 @@ async fn fetch_protocol_from_inventory(
                 download_tgz(
                     binary["url"].as_str().unwrap(),
                     binary["sha256"].as_str().unwrap(),
-                    path.to_str().unwrap(),
+                    protocol_home.to_str().unwrap(),
                 )
                 .await?;
                 return Ok(());
@@ -284,7 +301,7 @@ async fn fetch_protocol_from_inventory(
                     download_tgz(
                         source["url"].as_str().unwrap(),
                         source["sha256"].as_str().unwrap(),
-                        path.to_str().unwrap(),
+                        protocol_home.to_str().unwrap(),
                     )
                     .await?;
                     return Ok(());
@@ -301,7 +318,7 @@ async fn fetch_protocol_from_inventory(
                     fetch_from_git(
                         source["url"].as_str().unwrap(),
                         source["commit"].as_str().unwrap(),
-                        path.to_str().unwrap(),
+                        protocol_home.to_str().unwrap(),
                     )
                     .await?;
                     return Ok(());
