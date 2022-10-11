@@ -8,8 +8,7 @@ use tracing::debug;
 struct StorageMap {
     key_path_to_value: HashMap<String, Vec<u8>>,
     key_name_to_timestamp: HashMap<String, i64>,
-    path_to_key_paths: HashMap<String, (HashSet<String>, HashSet<String>)>, // 0 for latest, 1 for history
-    path_to_directories: HashMap<String, HashSet<String>>,
+    prefix_to_key_paths: HashMap<String, (HashSet<String>, HashSet<String>)>, // 0 for latest, 1 for history
 }
 
 #[derive(Default)]
@@ -42,16 +41,17 @@ impl crate::storage::common::Storage for BasicStorage {
             .insert(user_id_key_name, timestamp);
         let prefix = get_prefix(key_name);
         let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
+        let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
         if contains_key {
-            let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
+            let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
         } else {
             let mut key_list_set = (HashSet::new(), HashSet::new());
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
-            maps.path_to_key_paths.insert(keys_directory, key_list_set);
+            maps.prefix_to_key_paths
+                .insert(keys_directory, key_list_set);
         }
         Ok(key_path_created)
     }
@@ -99,24 +99,14 @@ impl crate::storage::common::Storage for BasicStorage {
 
     async fn list_keys(&self, prefix: &str, include_history: bool) -> Result<Vec<String>, String> {
         let maps = self.maps.read().await;
-        let res = maps.path_to_key_paths.get(&format!("{}:", prefix));
-        let dir = maps.path_to_directories.get(&format!("{}:", prefix));
+        let res = maps.prefix_to_key_paths.get(&format!("{}:", prefix));
         Ok(match res {
-            None => match dir {
-                None => vec![],
-                Some(dir) => Vec::from_iter(dir.clone()),
-            },
+            None => vec![],
             Some(key_list_set) => {
                 if include_history {
-                    match dir {
-                        None => Vec::from_iter(key_list_set.1.clone()),
-                        Some(dir) => _merge_key_list_directories(&key_list_set.1, dir),
-                    }
+                    Vec::from_iter(key_list_set.1.clone())
                 } else {
-                    match dir {
-                        None => Vec::from_iter(key_list_set.0.clone()),
-                        Some(dir) => _merge_key_list_directories(&key_list_set.0, dir),
-                    }
+                    Vec::from_iter(key_list_set.0.clone())
                 }
             }
         })
@@ -138,9 +128,9 @@ impl crate::storage::common::Storage for BasicStorage {
         }
         let prefix = get_prefix(key_name);
         let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
+        let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
         if contains_key {
-            let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
+            let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
             if old_timestamp != 0
                 && key_list_set
                     .0
@@ -156,7 +146,8 @@ impl crate::storage::common::Storage for BasicStorage {
             let mut key_list_set = (HashSet::new(), HashSet::new());
             key_list_set.0.insert(key_path_created.clone());
             key_list_set.1.insert(key_path_created.clone());
-            maps.path_to_key_paths.insert(keys_directory, key_list_set);
+            maps.prefix_to_key_paths
+                .insert(keys_directory, key_list_set);
         }
         Ok(key_path_created)
     }
@@ -178,9 +169,9 @@ impl crate::storage::common::Storage for BasicStorage {
                 .unwrap_or(0_i64);
             let prefix = get_prefix(key_name);
             let keys_directory = format!("{}::{}", user_id, prefix);
-            let contains_key = maps.path_to_key_paths.contains_key(&keys_directory);
+            let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
             if contains_key {
-                let key_list_set = maps.path_to_key_paths.get_mut(&keys_directory).unwrap();
+                let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
                 if old_timestamp != 0
                     && key_list_set
                         .0
@@ -203,15 +194,17 @@ fn _update_dir(maps: &mut StorageMap, user_id: &str, key_name: &str) {
     let mut path1 = user_id.to_string() + "::";
     let mut path2 = user_id.to_string() + "::" + split[0];
     for i in 0..split.len() - 1 {
-        let contains_key = maps.path_to_directories.contains_key(&path1);
+        let contains_key = maps.prefix_to_key_paths.contains_key(&path1);
         let value = path2.clone() + "@0";
         if contains_key {
-            let directories = maps.path_to_directories.get_mut(&path1).unwrap();
-            directories.insert(value);
+            let key_list_set = maps.prefix_to_key_paths.get_mut(&path1).unwrap();
+            key_list_set.0.insert(value.clone());
+            key_list_set.1.insert(value);
         } else {
-            let mut directories = HashSet::new();
-            directories.insert(value);
-            maps.path_to_directories.insert(path1, directories);
+            let mut key_list_set = (HashSet::new(), HashSet::new());
+            key_list_set.0.insert(value.clone());
+            key_list_set.1.insert(value);
+            maps.prefix_to_key_paths.insert(path1, key_list_set);
         }
         path1 = path2.clone() + ":";
         path2 = path2 + ":" + split[i + 1];
