@@ -1,5 +1,6 @@
 use super::utils::{download_tgz, fetch_from_git};
 use crate::colink_proto::*;
+use fs4::FileExt;
 use prost::Message;
 use std::{
     io::Write,
@@ -51,7 +52,13 @@ impl crate::server::MyService {
         let protocol_package_dir = Path::new(&colink_home)
             .join("protocols")
             .join(protocol_name);
-        let lock = self.lock(&format!("_pom:{}", protocol_name)).await?;
+        let file_lock = get_file_lock(&colink_home, protocol_name)?;
+        let file_lock = tokio::task::spawn_blocking(move || {
+            file_lock.lock_exclusive().unwrap();
+            file_lock
+        })
+        .await
+        .unwrap();
         // use a closure to catch errors and unlock the lock after this closure
         let res = async {
             // read running instances in user storage
@@ -184,7 +191,7 @@ impl crate::server::MyService {
             Ok::<(), Status>(())
         }
         .await;
-        self.unlock(lock).await?;
+        file_lock.unlock()?;
         res?;
         Ok(Response::new(ProtocolOperatorInstanceId {
             instance_id: instance_id.to_string(),
@@ -235,7 +242,14 @@ impl crate::server::MyService {
             .await?;
         let protocol_name = String::from_utf8(protocol_name).unwrap();
         let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
-        let lock = self.lock(&format!("_pom:{}", protocol_name)).await?;
+        let colink_home = self.get_colink_home()?;
+        let file_lock = get_file_lock(&colink_home, &protocol_name)?;
+        let file_lock = tokio::task::spawn_blocking(move || {
+            file_lock.lock_exclusive().unwrap();
+            file_lock
+        })
+        .await
+        .unwrap();
         let res = async {
             let mut running_instances: ListOfString = {
                 let running_instances = self
@@ -253,7 +267,7 @@ impl crate::server::MyService {
             Ok::<(), Status>(())
         }
         .await;
-        self.unlock(lock).await?;
+        file_lock.unlock()?;
         res?;
         Ok(Response::new(Empty::default()))
     }
@@ -354,4 +368,16 @@ async fn fetch_protocol_from_inventory(
         "the inventory file of protocol {} is damaged",
         protocol_name
     ))
+}
+
+fn get_file_lock(colink_home: &str, protocol_name: &str) -> std::io::Result<std::fs::File> {
+    let lock_dir = Path::new(&colink_home).join(".lock");
+    if !lock_dir.exists() {
+        std::fs::create_dir_all(lock_dir.clone())?;
+    }
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(lock_dir.join(protocol_name))
 }
