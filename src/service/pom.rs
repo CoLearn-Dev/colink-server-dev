@@ -25,7 +25,7 @@ impl crate::server::MyService {
         {
             return Err(Status::permission_denied(""));
         }
-        // prepare information for starting the instance
+        // prepare CLI param to start PO instance
         if self.core_uri.is_none() {
             return Err(Status::internal("core_uri not found."));
         }
@@ -37,8 +37,8 @@ impl crate::server::MyService {
         let instance_id = Uuid::new_v4();
         let protocol_name: &str = &request.get_ref().protocol_name;
         // check protocol_name
-        let file_name = Path::new(&protocol_name).file_name();
-        if file_name.is_none() || file_name.unwrap() != protocol_name {
+        let protocol_name_parsed = Path::new(&protocol_name).file_name();
+        if protocol_name_parsed.is_none() || protocol_name_parsed.unwrap() != protocol_name {
             return Err(Status::invalid_argument("protocol_name is invalid."));
         }
         // create protocols directory if not exist
@@ -52,14 +52,14 @@ impl crate::server::MyService {
         let protocol_package_dir = Path::new(&colink_home)
             .join("protocols")
             .join(protocol_name);
-        let file_lock = get_file_lock(&colink_home, protocol_name)?;
-        let file_lock = tokio::task::spawn_blocking(move || {
-            file_lock.lock_exclusive().unwrap();
-            file_lock
+        let protocol_package_lock = get_file_lock(&colink_home, protocol_name)?;
+        let protocol_package_lock = tokio::task::spawn_blocking(move || {
+            protocol_package_lock.lock_exclusive().unwrap();
+            protocol_package_lock
         })
         .await
         .unwrap();
-        // use a closure to catch errors and unlock the lock after this closure
+        // use a closure to prevent locking forever caused by errors
         let res = async {
             // read running instances in user storage
             let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
@@ -83,19 +83,19 @@ impl crate::server::MyService {
                     }
                 } else {
                     return Err(Status::aborted(format!(
-                        "Protocol {} has running instances.",
+                        "Protocol {} has running instances and cannot be upgraded.",
                         protocol_name
                     )));
                 }
             }
-            // fetch protocol package from inventory if not exist
+            // fetch protocol package from inventory if protocol package folder does not exist
             let colink_toml_path = protocol_package_dir.join("colink.toml");
             if std::fs::metadata(&colink_toml_path).is_err() {
                 match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(Status::not_found(&format!(
-                            "protocol {} not found: {}",
+                            "protocol {} not found from inventory: {}",
                             protocol_name, err
                         )));
                     }
@@ -191,7 +191,7 @@ impl crate::server::MyService {
             Ok::<(), Status>(())
         }
         .await;
-        file_lock.unlock()?;
+        protocol_package_lock.unlock()?;
         res?;
         Ok(Response::new(ProtocolOperatorInstanceId {
             instance_id: instance_id.to_string(),
@@ -243,10 +243,10 @@ impl crate::server::MyService {
         let protocol_name = String::from_utf8(protocol_name).unwrap();
         let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
         let colink_home = self.get_colink_home()?;
-        let file_lock = get_file_lock(&colink_home, &protocol_name)?;
-        let file_lock = tokio::task::spawn_blocking(move || {
-            file_lock.lock_exclusive().unwrap();
-            file_lock
+        let protocol_package_lock = get_file_lock(&colink_home, &protocol_name)?;
+        let protocol_package_lock = tokio::task::spawn_blocking(move || {
+            protocol_package_lock.lock_exclusive().unwrap();
+            protocol_package_lock
         })
         .await
         .unwrap();
@@ -267,7 +267,7 @@ impl crate::server::MyService {
             Ok::<(), Status>(())
         }
         .await;
-        file_lock.unlock()?;
+        protocol_package_lock.unlock()?;
         res?;
         Ok(Response::new(Empty::default()))
     }

@@ -33,26 +33,20 @@ impl crate::storage::common::Storage for BasicStorage {
                 return Err(format!("Key name already exists: {}", user_id_key_name));
             }
         } else {
-            _update_dir(&mut maps, user_id, key_name);
+            _maintain_prefixes_along_path(&mut maps, user_id, key_name);
         }
         maps.key_path_to_value
             .insert(key_path_created.clone(), value.to_vec());
         maps.key_name_to_timestamp
             .insert(user_id_key_name, timestamp);
-        let prefix = get_prefix(key_name);
-        let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
-        if contains_key {
-            let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
-            key_list_set.0.insert(key_path_created.clone());
-            key_list_set.1.insert(key_path_created.clone());
-        } else {
-            let mut key_list_set = (HashSet::new(), HashSet::new());
-            key_list_set.0.insert(key_path_created.clone());
-            key_list_set.1.insert(key_path_created.clone());
-            maps.prefix_to_key_paths
-                .insert(keys_directory, key_list_set);
-        }
+        let key_name_prefix = get_prefix(key_name);
+        let prefix = format!("{}::{}", user_id, key_name_prefix);
+        let prefix_set = maps
+            .prefix_to_key_paths
+            .entry(prefix)
+            .or_insert((HashSet::new(), HashSet::new()));
+        prefix_set.0.insert(key_path_created.clone());
+        prefix_set.1.insert(key_path_created.clone());
         Ok(key_path_created)
     }
 
@@ -102,11 +96,11 @@ impl crate::storage::common::Storage for BasicStorage {
         let res = maps.prefix_to_key_paths.get(&format!("{}:", prefix));
         Ok(match res {
             None => vec![],
-            Some(key_list_set) => {
+            Some(prefix_set) => {
                 if include_history {
-                    Vec::from_iter(key_list_set.1.clone())
+                    Vec::from_iter(prefix_set.1.clone())
                 } else {
-                    Vec::from_iter(key_list_set.0.clone())
+                    Vec::from_iter(prefix_set.0.clone())
                 }
             }
         })
@@ -124,31 +118,25 @@ impl crate::storage::common::Storage for BasicStorage {
             .insert(user_id_key_name.clone(), timestamp)
             .unwrap_or(0_i64);
         if old_timestamp == 0 {
-            _update_dir(&mut maps, user_id, key_name);
+            _maintain_prefixes_along_path(&mut maps, user_id, key_name);
         }
-        let prefix = get_prefix(key_name);
-        let keys_directory = format!("{}::{}", user_id, prefix);
-        let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
-        if contains_key {
-            let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
-            if old_timestamp != 0
-                && key_list_set
-                    .0
-                    .contains(&format!("{}@{}", user_id_key_name, old_timestamp))
-            {
-                key_list_set
-                    .0
-                    .remove(&format!("{}@{}", user_id_key_name, old_timestamp));
-            }
-            key_list_set.0.insert(key_path_created.clone());
-            key_list_set.1.insert(key_path_created.clone());
-        } else {
-            let mut key_list_set = (HashSet::new(), HashSet::new());
-            key_list_set.0.insert(key_path_created.clone());
-            key_list_set.1.insert(key_path_created.clone());
-            maps.prefix_to_key_paths
-                .insert(keys_directory, key_list_set);
+        let key_name_prefix = get_prefix(key_name);
+        let prefix = format!("{}::{}", user_id, key_name_prefix);
+        let prefix_set = maps
+            .prefix_to_key_paths
+            .entry(prefix)
+            .or_insert((HashSet::new(), HashSet::new()));
+        if old_timestamp != 0
+            && prefix_set
+                .0
+                .contains(&format!("{}@{}", user_id_key_name, old_timestamp))
+        {
+            prefix_set
+                .0
+                .remove(&format!("{}@{}", user_id_key_name, old_timestamp));
         }
+        prefix_set.0.insert(key_path_created.clone());
+        prefix_set.1.insert(key_path_created.clone());
         Ok(key_path_created)
     }
 
@@ -167,17 +155,16 @@ impl crate::storage::common::Storage for BasicStorage {
                 .key_name_to_timestamp
                 .insert(user_id_key_name.clone(), timestamp)
                 .unwrap_or(0_i64);
-            let prefix = get_prefix(key_name);
-            let keys_directory = format!("{}::{}", user_id, prefix);
-            let contains_key = maps.prefix_to_key_paths.contains_key(&keys_directory);
-            if contains_key {
-                let key_list_set = maps.prefix_to_key_paths.get_mut(&keys_directory).unwrap();
+            let key_name_prefix = get_prefix(key_name);
+            let prefix = format!("{}::{}", user_id, key_name_prefix);
+            if maps.prefix_to_key_paths.contains_key(&prefix) {
+                let prefix_set = maps.prefix_to_key_paths.get_mut(&prefix).unwrap();
                 if old_timestamp != 0
-                    && key_list_set
+                    && prefix_set
                         .0
                         .contains(&format!("{}@{}", user_id_key_name, old_timestamp))
                 {
-                    key_list_set
+                    prefix_set
                         .0
                         .remove(&format!("{}@{}", user_id_key_name, old_timestamp));
                 }
@@ -189,24 +176,18 @@ impl crate::storage::common::Storage for BasicStorage {
     }
 }
 
-fn _update_dir(maps: &mut StorageMap, user_id: &str, key_name: &str) {
-    let split: Vec<&str> = key_name.split(':').collect();
-    let mut path1 = user_id.to_string() + "::";
-    let mut path2 = user_id.to_string() + "::" + split[0];
-    for i in 0..split.len() - 1 {
-        let contains_key = maps.prefix_to_key_paths.contains_key(&path1);
-        let value = path2.clone() + "@0";
-        if contains_key {
-            let key_list_set = maps.prefix_to_key_paths.get_mut(&path1).unwrap();
-            key_list_set.0.insert(value.clone());
-            key_list_set.1.insert(value);
-        } else {
-            let mut key_list_set = (HashSet::new(), HashSet::new());
-            key_list_set.0.insert(value.clone());
-            key_list_set.1.insert(value);
-            maps.prefix_to_key_paths.insert(path1, key_list_set);
-        }
-        path1 = path2.clone() + ":";
-        path2 = path2 + ":" + split[i + 1];
+fn _maintain_prefixes_along_path(maps: &mut StorageMap, user_id: &str, key_name: &str) {
+    let splits: Vec<&str> = key_name.split(':').collect();
+    let mut current_path = user_id.to_string() + "::";
+    let mut next_path = user_id.to_string() + "::" + splits[0];
+    for i in 0..splits.len() - 1 {
+        let current_set = maps
+            .prefix_to_key_paths
+            .entry(current_path)
+            .or_insert((HashSet::new(), HashSet::new()));
+        current_set.0.insert(next_path.clone() + "@0");
+        current_set.1.insert(next_path.clone() + "@0");
+        current_path = next_path.clone() + ":";
+        next_path = next_path + ":" + splits[i + 1];
     }
 }
