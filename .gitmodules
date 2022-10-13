@@ -1,4 +1,4 @@
 [submodule "proto"]
 	path = proto
-	url = git@github.com:CoLearn-Dev/colink-proto-dev.git
+	url = https://github.com/CoLearn-Dev/colink-proto-dev.git
 	branch = main

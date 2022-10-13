@@ -102,10 +102,10 @@ async fn _start_protocol_operator(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let mut req = generate_request(
         user_jwt,
-        ProtocolOperatorInstance {
+        StartProtocolOperatorRequest {
             protocol_name: protocol_name.to_string(),
             user_id: user_id.to_string(),
-            ..Default::default()
+            upgrade: false,
         },
     );
     req.metadata_mut().insert(

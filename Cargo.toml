@@ -1,12 +1,13 @@
 [package]
 name = "colink-server"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
 chrono = "0.4"
 flate2 = "1.0"
+fs4 = { version = "0.6", features = ["sync"] }
 futures-lite = "1.12"
 hex = "0.4"
 jsonwebtoken = "7.2"

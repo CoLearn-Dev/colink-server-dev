@@ -122,6 +122,21 @@ impl crate::server::MyService {
             .is_ok())
     }
 
+    pub async fn _host_storage_create(
+        &self,
+        key_name: &str,
+        payload: &[u8],
+    ) -> Result<String, Status> {
+        match self
+            .storage
+            .create(&self.get_host_id(), key_name, payload)
+            .await
+        {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
+    }
+
     pub async fn _host_storage_update(
         &self,
         key_name: &str,
@@ -148,6 +163,13 @@ impl crate::server::MyService {
         };
         let payload = entries.values().next().unwrap();
         Ok(payload.to_vec())
+    }
+
+    pub async fn _host_storage_delete(&self, key_name: &str) -> Result<String, Status> {
+        match self.storage.delete(&self.get_host_id(), key_name).await {
+            Ok(key_path) => Ok(key_path),
+            Err(e) => Err(Status::internal(e)),
+        }
     }
 
     pub async fn _user_storage_update(

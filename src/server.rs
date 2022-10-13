@@ -22,7 +22,6 @@ pub struct MyService {
     pub mq: Box<dyn MQ>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
     pub task_storage_mutex: Mutex<i32>,
-    pub pom_fetch_mutex: Mutex<i32>,
     pub public_key: secp256k1::PublicKey,
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
@@ -126,14 +125,14 @@ impl CoLink for GrpcService {
 
     async fn start_protocol_operator(
         &self,
-        request: Request<ProtocolOperatorInstance>,
-    ) -> Result<Response<ProtocolOperatorInstance>, Status> {
+        request: Request<StartProtocolOperatorRequest>,
+    ) -> Result<Response<ProtocolOperatorInstanceId>, Status> {
         self.service._start_protocol_operator(request).await
     }
 
     async fn stop_protocol_operator(
         &self,
-        request: Request<ProtocolOperatorInstance>,
+        request: Request<ProtocolOperatorInstanceId>,
     ) -> Result<Response<Empty>, Status> {
         self.service._stop_protocol_operator(request).await
     }
@@ -231,7 +230,6 @@ async fn run_server(
         jwt_secret,
         mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
         task_storage_mutex: Mutex::new(0),
-        pom_fetch_mutex: Mutex::new(0),
         secret_key: core_secret_key,
         public_key: core_public_key,
         inter_core_ca_certificate: None,
