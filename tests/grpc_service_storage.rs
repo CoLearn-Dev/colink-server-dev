@@ -105,8 +105,8 @@ async fn test_invalid_signature() {
     core_info_request
         .metadata_mut()
         .insert("authorization", MetadataValue::from_static(""));
-    let core_info_response = client.request_core_info(core_info_request).await.unwrap();
-    let core_info: CoreInfo = core_info_response.into_inner();
+    let core_info_response = client.request_info(core_info_request).await.unwrap();
+    let core_info: RequestInfoResponse = core_info_response.into_inner();
     let core_pub_key = core_info.core_public_key;
     let core_pub_key = secp256k1::PublicKey::from_slice(&core_pub_key).unwrap();
 
@@ -174,8 +174,8 @@ async fn test_storage_crud() {
     core_info_request
         .metadata_mut()
         .insert("authorization", MetadataValue::from_static(""));
-    let core_info_response = client.request_core_info(core_info_request).await.unwrap();
-    let core_info: CoreInfo = core_info_response.into_inner();
+    let core_info_response = client.request_info(core_info_request).await.unwrap();
+    let core_info: RequestInfoResponse = core_info_response.into_inner();
     let core_pub_key = core_info.core_public_key;
     let core_pub_key = secp256k1::PublicKey::from_slice(&core_pub_key).unwrap();
 

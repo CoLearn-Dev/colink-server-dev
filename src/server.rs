@@ -98,11 +98,11 @@ impl CoLink for GrpcService {
         self.service._finish_task(request).await
     }
 
-    async fn request_core_info(
+    async fn request_info(
         &self,
         request: Request<Empty>,
-    ) -> Result<Response<CoreInfo>, Status> {
-        self.service._request_core_info(request).await
+    ) -> Result<Response<RequestInfoResponse>, Status> {
+        self.service._request_info(request).await
     }
 
     async fn subscribe(
