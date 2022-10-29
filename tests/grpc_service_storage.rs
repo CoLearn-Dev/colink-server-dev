@@ -77,6 +77,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         None,
         false,
         false,
+        false,
     ));
     loop {
         if std::fs::metadata("host_token.txt").is_ok()

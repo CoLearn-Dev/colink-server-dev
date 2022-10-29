@@ -1,6 +1,6 @@
 [package]
 name = "colink-server"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 [dependencies]
@@ -24,6 +24,7 @@ structopt = "0.3"
 tar = "0.4"
 tempfile = "3"
 tokio = { version = "1.18", features = ["macros", "rt-multi-thread", "rt", "fs"] }
+tokio-stream = "0.1"
 toml = "0.5"
 tonic = { version = "0.7", features = ["tls", "tls-roots"] }
 tonic-web = "0.3"

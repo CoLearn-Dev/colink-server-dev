@@ -1,9 +1,12 @@
 use super::utils::*;
-use crate::colink_proto::*;
+use crate::{colink_proto::*, server::MyService};
 pub use colink_registry_proto::UserRecord;
 use prost::Message;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
@@ -12,7 +15,11 @@ mod colink_registry_proto {
 }
 
 impl crate::server::MyService {
-    pub async fn _create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
+    pub async fn _create_task(
+        &self,
+        request: Request<Task>,
+        service: Arc<MyService>,
+    ) -> Result<Response<Task>, Status> {
         Self::check_privilege_in(request.metadata(), &["user"])?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let task_id = Uuid::new_v4();
@@ -33,16 +40,18 @@ impl crate::server::MyService {
         self._internal_storage_update(&user_id, &format!("tasks:{}", task_id), &payload)
             .await?;
         for i in 1..task.participants.len() {
-            let (core_addr, guest_jwt) = self
-                .query_user_record(&user_id, &task.participants[i].user_id)
+            if self.inter_core_reverse_mode {
+                self.send_inter_core_sync_task_with_reverse_connection(
+                    &user_id,
+                    &task.participants[i].user_id,
+                    &task,
+                    service.clone(),
+                )
                 .await?;
-            let mut client = match self._grpc_connect(&core_addr).await {
-                Ok(client) => client,
-                Err(e) => return Err(Status::internal(format!("{}", e))),
-            };
-            client
-                .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
-                .await?;
+            } else {
+                self.send_inter_core_sync_task(&user_id, &task.participants[i].user_id, &task)
+                    .await?;
+            }
         }
 
         let task_storage_mutex = self.task_storage_mutex.lock().await;
@@ -130,23 +139,16 @@ impl crate::server::MyService {
         drop(task_storage_mutex);
 
         if task.require_agreement && user_status != "ignored" {
-            let (core_addr, guest_jwt) = self
-                .query_user_record(&user_id, &task.participants[0].user_id)
-                .await?;
-            let mut client = match self._grpc_connect(&core_addr).await {
-                Ok(client) => client,
-                Err(e) => return Err(Status::internal(format!("{}", e))),
-            };
-            client
-                .inter_core_sync_task(generate_request(
-                    &guest_jwt,
-                    Task {
-                        task_id: task.task_id.clone(),
-                        decisions: task.decisions.clone(),
-                        ..Default::default()
-                    },
-                ))
-                .await?;
+            self.send_inter_core_sync_task(
+                &user_id,
+                &task.participants[0].user_id,
+                &Task {
+                    task_id: task.task_id.clone(),
+                    decisions: task.decisions.clone(),
+                    ..Default::default()
+                },
+            )
+            .await?;
         }
 
         Ok(Response::new(Empty::default()))
@@ -287,21 +289,123 @@ impl crate::server::MyService {
                 // The initiator should broadcast the status change.
                 if task.participants[0].user_id == user_id && task.participants.len() > 2 {
                     for i in 1..task.participants.len() {
-                        let (core_addr, guest_jwt) = self
-                            .query_user_record(&user_id, &task.participants[i].user_id)
-                            .await?;
-                        let mut client = match self._grpc_connect(&core_addr).await {
-                            Ok(client) => client,
-                            Err(e) => return Err(Status::internal(format!("{}", e))),
-                        };
-                        client
-                            .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
-                            .await?;
+                        self.send_inter_core_sync_task(
+                            &user_id,
+                            &task.participants[i].user_id,
+                            &task,
+                        )
+                        .await?;
                     }
                 }
             }
         }
         Ok(Response::new(Empty::default()))
+    }
+
+    pub async fn _inter_core_sync_task_with_reverse_connection(
+        &self,
+        request: Request<Task>,
+    ) -> Result<Response<ReceiverStream<Result<Task, Status>>>, Status> {
+        let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        let receiver_user_id = request.get_ref().participants[0].user_id.clone();
+        self._inter_core_sync_task(request).await?;
+        let (tx, rx) = mpsc::channel(64);
+        self.inter_core_reverse_senders
+            .lock()
+            .await
+            .insert((user_id, receiver_user_id), tx);
+        Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
+    async fn send_inter_core_sync_task(
+        &self,
+        user_id: &str,
+        target_user_id: &str,
+        task: &Task,
+    ) -> Result<(), Status> {
+        if self
+            .inter_core_reverse_senders
+            .lock()
+            .await
+            .contains_key(&(user_id.to_string(), target_user_id.to_string()))
+        {
+            let inter_core_reverse_senders = self.inter_core_reverse_senders.lock().await;
+            let tx = inter_core_reverse_senders
+                .get(&(user_id.to_string(), target_user_id.to_string()))
+                .unwrap();
+            match tx.send(Ok(task.clone())).await {
+                Ok(_) => {}
+                Err(e) => return Err(Status::internal(format!("{}", e))),
+            }
+        } else {
+            let (core_addr, guest_jwt) = self.query_user_record(user_id, target_user_id).await?;
+            let mut client = match self._grpc_connect(&core_addr).await {
+                Ok(client) => client,
+                Err(e) => return Err(Status::internal(format!("{}", e))),
+            };
+            client
+                .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn send_inter_core_sync_task_with_reverse_connection(
+        &self,
+        user_id: &str,
+        target_user_id: &str,
+        task: &Task,
+        service: Arc<MyService>,
+    ) -> Result<(), Status> {
+        let (core_addr, guest_jwt) = self.query_user_record(user_id, target_user_id).await?;
+        let mut client = match self._grpc_connect(&core_addr).await {
+            Ok(client) => client,
+            Err(e) => return Err(Status::internal(format!("{}", e))),
+        };
+
+        let inter_core_reverse_handlers = self.inter_core_reverse_handlers.lock().await;
+        if inter_core_reverse_handlers
+            .contains_key(&(user_id.to_string(), target_user_id.to_string()))
+            && !inter_core_reverse_handlers
+                .get(&(user_id.to_string(), target_user_id.to_string()))
+                .unwrap()
+                .is_finished()
+        {
+            client
+                .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
+                .await?;
+            return Ok(());
+        }
+        drop(inter_core_reverse_handlers);
+
+        let mut stream = client
+            .inter_core_sync_task_with_reverse_connection(generate_request(
+                &guest_jwt,
+                task.clone(),
+            ))
+            .await?
+            .into_inner();
+        let user_id_clone = user_id.to_string();
+        let handler = tokio::spawn(async move {
+            while let Some(task) = stream.message().await? {
+                let mut req: Request<Task> = generate_request("", task);
+                req.metadata_mut().insert(
+                    "privilege",
+                    tonic::metadata::MetadataValue::from_static("guest"),
+                );
+                req.metadata_mut().insert(
+                    "user_id",
+                    tonic::metadata::MetadataValue::try_from(user_id_clone.clone()).unwrap(),
+                );
+                service._inter_core_sync_task(req).await?;
+            }
+            Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
+        });
+        self.inter_core_reverse_handlers
+            .lock()
+            .await
+            .insert((user_id.to_string(), target_user_id.to_string()), handler);
+        Ok(())
     }
 
     async fn remove_task_from_list_in_storage(
