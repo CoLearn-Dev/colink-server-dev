@@ -65,6 +65,10 @@ struct CommandLineArgs {
     /// Enforce the generation of the core's private key.
     #[structopt(long)]
     force_gen_priv_key: bool,
+
+    /// Create reverse connections to other servers.
+    #[structopt(long)]
+    inter_core_reverse_mode: bool,
 }
 
 #[tokio::main]
@@ -86,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_key,
         force_gen_jwt_secret,
         force_gen_priv_key,
+        inter_core_reverse_mode,
     } = CommandLineArgs::from_args();
 
     init_and_run_server(
@@ -103,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inter_core_key,
         force_gen_jwt_secret,
         force_gen_priv_key,
+        inter_core_reverse_mode,
     )
     .await;
 

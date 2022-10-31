@@ -5,17 +5,21 @@ use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthIntercepto
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use secp256k1::Secp256k1;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{
     transport::{Certificate, Identity, Server, ServerTlsConfig},
     Request, Response, Status,
 };
 use tracing::error;
 
+#[allow(clippy::type_complexity)]
 pub struct MyService {
     pub storage: Box<dyn StorageWithSubscription>,
     pub jwt_secret: [u8; 32],
@@ -27,6 +31,14 @@ pub struct MyService {
     pub inter_core_ca_certificate: Option<Certificate>,
     pub inter_core_identity: Option<Identity>,
     pub core_uri: Option<String>,
+    pub inter_core_reverse_mode: bool,
+    pub inter_core_reverse_senders: Mutex<HashMap<(String, String), Sender<Result<Task, Status>>>>,
+    pub inter_core_reverse_handlers: Mutex<
+        HashMap<
+            (String, String),
+            tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+        >,
+    >,
 }
 
 pub struct GrpcService {
@@ -84,7 +96,9 @@ impl CoLink for GrpcService {
     }
 
     async fn create_task(&self, request: Request<Task>) -> Result<Response<Task>, Status> {
-        self.service._create_task(request).await
+        self.service
+            ._create_task(request, self.service.clone())
+            .await
     }
 
     async fn confirm_task(
@@ -123,6 +137,16 @@ impl CoLink for GrpcService {
         self.service._inter_core_sync_task(request).await
     }
 
+    type InterCoreSyncTaskWithReverseConnectionStream = ReceiverStream<Result<Task, Status>>;
+    async fn inter_core_sync_task_with_reverse_connection(
+        &self,
+        request: Request<Task>,
+    ) -> Result<Response<Self::InterCoreSyncTaskWithReverseConnectionStream>, Status> {
+        self.service
+            ._inter_core_sync_task_with_reverse_connection(request)
+            .await
+    }
+
     async fn start_protocol_operator(
         &self,
         request: Request<StartProtocolOperatorRequest>,
@@ -154,6 +178,7 @@ pub async fn init_and_run_server(
     inter_core_key: Option<PathBuf>,
     force_gen_jwt_secret: bool,
     force_gen_core_cert: bool,
+    inter_core_reverse_mode: bool,
 ) {
     let socket_address = format!("{}:{}", address, port).parse().unwrap();
     match run_server(
@@ -170,6 +195,7 @@ pub async fn init_and_run_server(
         inter_core_key,
         force_gen_jwt_secret,
         force_gen_core_cert,
+        inter_core_reverse_mode,
     )
     .await
     {
@@ -196,6 +222,7 @@ async fn run_server(
     inter_core_key: Option<PathBuf>,
     force_gen_jwt_secret: bool,
     force_gen_priv_key: bool,
+    inter_core_reverse_mode: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all("init_state")?;
     if force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret.txt").is_err() {
@@ -235,6 +262,9 @@ async fn run_server(
         inter_core_ca_certificate: None,
         inter_core_identity: None,
         core_uri,
+        inter_core_reverse_mode,
+        inter_core_reverse_senders: Mutex::new(HashMap::new()),
+        inter_core_reverse_handlers: Mutex::new(HashMap::new()),
     };
     if let Some(inter_core_ca) = inter_core_ca {
         service = service.ca_certificate(&inter_core_ca.as_path().display().to_string());

@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "colink-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -459,6 +459,7 @@ dependencies = [
  "tar",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "toml",
  "tonic",
  "tonic-build",
