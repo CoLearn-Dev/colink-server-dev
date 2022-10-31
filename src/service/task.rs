@@ -309,7 +309,7 @@ impl crate::server::MyService {
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let receiver_user_id = request.get_ref().participants[0].user_id.clone();
         self._inter_core_sync_task(request).await?;
-        let (tx, rx) = mpsc::channel(64);
+        let (tx, rx) = mpsc::channel(64); // The channel will buffer up to 64 tasks.
         self.inter_core_reverse_senders
             .lock()
             .await
@@ -376,7 +376,6 @@ impl crate::server::MyService {
                 .await?;
             return Ok(());
         }
-        drop(inter_core_reverse_handlers);
 
         let mut stream = client
             .inter_core_sync_task_with_reverse_connection(generate_request(
