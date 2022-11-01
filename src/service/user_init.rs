@@ -9,9 +9,9 @@ pub async fn user_init(
     user_jwt: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let colink_home = service.get_colink_home()?;
-    let mut path = Path::new(&colink_home).join("user_init_config.toml");
+    let mut path = Path::new("user_init_config.toml").to_path_buf();
     if std::fs::metadata(&path).is_err() {
-        path = Path::new("user_init_config.template.toml").to_path_buf();
+        path = Path::new(&colink_home).join("user_init_config.template.toml");
     }
     let toml = match std::fs::read_to_string(&path).unwrap().parse::<Value>() {
         Ok(toml) => toml,
