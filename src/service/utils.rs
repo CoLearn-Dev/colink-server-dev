@@ -3,6 +3,7 @@ use futures_lite::StreamExt;
 use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
 use sha2::{Digest, Sha256};
 use std::io::{self, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tonic::{
     metadata::{MetadataMap, MetadataValue},
@@ -263,6 +264,19 @@ impl crate::server::MyService {
             return Err(Status::not_found("colink home not found."));
         };
         Ok(colink_home)
+    }
+
+    pub fn find_resource_file(&self, file_name: &str) -> Result<PathBuf, Status> {
+        let colink_home = self.get_colink_home()?;
+        let mut path = Path::new(file_name).to_path_buf();
+        if std::fs::metadata(&path).is_err() {
+            path = Path::new(&colink_home).join(file_name);
+        }
+        if std::fs::metadata(&path).is_ok() {
+            Ok(path)
+        } else {
+            Err(Status::not_found(file_name.to_string()))
+        }
     }
 }
 
