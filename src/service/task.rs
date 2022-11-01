@@ -363,7 +363,7 @@ impl crate::server::MyService {
             Err(e) => return Err(Status::internal(format!("{}", e))),
         };
 
-        let inter_core_reverse_handlers = self.inter_core_reverse_handlers.lock().await;
+        let mut inter_core_reverse_handlers = self.inter_core_reverse_handlers.lock().await;
         if inter_core_reverse_handlers
             .contains_key(&(user_id.to_string(), target_user_id.to_string()))
             && !inter_core_reverse_handlers
@@ -400,9 +400,7 @@ impl crate::server::MyService {
             }
             Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
         });
-        self.inter_core_reverse_handlers
-            .lock()
-            .await
+        inter_core_reverse_handlers
             .insert((user_id.to_string(), target_user_id.to_string()), handler);
         Ok(())
     }

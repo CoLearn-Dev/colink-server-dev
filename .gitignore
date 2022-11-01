@@ -3,3 +3,4 @@
 /.vscode
 host_token.txt
 /init_state
+user_init_config.toml
