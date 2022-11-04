@@ -19,12 +19,14 @@ impl crate::server::MyService {
         };
         Ok(Response::new(RequestInfoResponse {
             mq_uri: match Self::check_privilege_in(request.metadata(), &["user", "host"]) {
-                Ok(_i) => {
+                Ok(_) => {
                     let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
-                    let mq_uri_bytes = self._internal_storage_read(&user_id, "mq_uri").await?;
-                    String::from_utf8(mq_uri_bytes).unwrap()
+                    match self._internal_storage_read(&user_id, "mq_uri").await {
+                        Ok(mq_uri) => String::from_utf8(mq_uri).unwrap(),
+                        Err(_) => Default::default(),
+                    }
                 }
-                Err(_e) => Default::default(),
+                Err(_) => Default::default(),
             },
             core_public_key: public_key_vec,
             requestor_ip,

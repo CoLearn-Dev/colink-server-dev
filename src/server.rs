@@ -276,10 +276,6 @@ async fn run_server(
         );
     }
     service.mq.delete_all_accounts().await?;
-    let mq_uri = service.mq.create_user_account().await?;
-    service
-        ._internal_storage_update(&host_id, "mq_uri", mq_uri.as_bytes())
-        .await?;
     let grpc_service = GrpcService {
         service: Arc::new(service),
     };

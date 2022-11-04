@@ -93,17 +93,11 @@ impl crate::server::MyService {
         }
         self.check_user_consent(&user_consent_to_be_checked, &self.public_key.serialize())?;
         let user_id = hex::encode(&user_public_key.serialize());
-        let mq_uri = match self.mq.create_user_account().await {
-            Ok(mq_uri) => mq_uri,
-            Err(e) => return Err(Status::internal(e)),
-        };
         let mut user_consent_bytes: Vec<u8> = vec![];
         user_consent_to_be_stored
             .encode(&mut user_consent_bytes)
             .unwrap();
         self._internal_storage_update(&user_id, "user_consent", &user_consent_bytes)
-            .await?;
-        self._internal_storage_update(&user_id, "mq_uri", mq_uri.as_bytes())
             .await?;
 
         let token = jsonwebtoken::encode(
