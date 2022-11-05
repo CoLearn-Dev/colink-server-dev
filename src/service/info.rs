@@ -17,6 +17,7 @@ impl crate::server::MyService {
                 None => request.remote_addr().unwrap().ip().to_string(),
             },
         };
+        let version = env!("CARGO_PKG_VERSION").to_string();
         Ok(Response::new(RequestInfoResponse {
             mq_uri: match Self::check_privilege_in(request.metadata(), &["user", "host"]) {
                 Ok(_) => {
@@ -30,6 +31,7 @@ impl crate::server::MyService {
             },
             core_public_key: public_key_vec,
             requestor_ip,
+            version,
         }))
     }
 }
