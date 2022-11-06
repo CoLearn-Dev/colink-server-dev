@@ -7,27 +7,19 @@ use structopt::StructOpt;
 struct CommandLineArgs {
     /// Address of CoLink server
     // short and long flags (-d, --debug) will be deduced from the field's name
-    #[structopt(short, long, env = "COLINK_SERVER_ADDRESS", default_value = "0.0.0.0")]
+    #[structopt(short, long, env = "COLINK_SERVER_ADDRESS")]
     address: String,
 
     /// Port of CoLink server
-    #[structopt(short, long, env = "COLINK_SERVER_PORT", default_value = "8080")]
+    #[structopt(short, long, env = "COLINK_SERVER_PORT")]
     port: u16,
 
     /// AMQP URI of MQ
-    #[structopt(
-        long,
-        env = "COLINK_SERVER_MQ_AMQP",
-        default_value = "amqp://guest:guest@localhost:5672"
-    )]
+    #[structopt(long, env = "COLINK_SERVER_MQ_AMQP")]
     mq_amqp: String,
 
     /// Management API of MQ
-    #[structopt(
-        long,
-        env = "COLINK_SERVER_MQ_API",
-        default_value = "http://guest:guest@localhost:15672/api"
-    )]
+    #[structopt(long, env = "COLINK_SERVER_MQ_API")]
     mq_api: String,
 
     /// Prefix of MQ
