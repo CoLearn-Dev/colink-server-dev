@@ -7,9 +7,6 @@ value = "true"
 [remote_storage]
 operator_num = 1
 
-[remote_command]
-operator_num = 1
-
 [registry]
 operator_num = 1
 start_after = [ "policy_module", "remote_storage" ]

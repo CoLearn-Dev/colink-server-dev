@@ -12,6 +12,7 @@ pub struct StorageWithMQSubscription {
     key_subscription_count: Mutex<HashMap<String, i32>>,
     queue_name_to_user_id_key_name: Mutex<HashMap<String, String>>,
     lock: RwLock<i32>,
+    get_mq_uri_mutex: Mutex<i32>,
 }
 
 #[async_trait::async_trait]
@@ -164,16 +165,29 @@ impl StorageWithMQSubscription {
             key_subscription_count: Mutex::new(HashMap::new()),
             queue_name_to_user_id_key_name: Mutex::new(HashMap::new()),
             lock: RwLock::new(0),
+            get_mq_uri_mutex: Mutex::new(0),
         }
     }
 
     async fn get_mq_uri(&self, user_id: &str) -> Result<String, String> {
-        let entries = self
+        let _mutex = self.get_mq_uri_mutex.lock().await;
+        match self
             .storage
             .read_from_key_names(user_id, &["_internal:mq_uri".to_string()])
-            .await?;
-        let payload = entries.values().next().unwrap();
-        Ok(String::from_utf8(payload.to_vec()).unwrap())
+            .await
+        {
+            Ok(entries) => {
+                let payload = entries.values().next().unwrap();
+                Ok(String::from_utf8(payload.to_vec()).unwrap())
+            }
+            Err(_) => {
+                let mq_uri = self.mq.create_user_account().await?;
+                self.storage
+                    .create(user_id, "_internal:mq_uri", mq_uri.as_bytes())
+                    .await?;
+                Ok(mq_uri)
+            }
+        }
     }
 
     async fn publish_change(
