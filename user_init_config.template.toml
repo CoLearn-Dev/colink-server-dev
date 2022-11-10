@@ -11,8 +11,8 @@ operator_num = 1
 operator_num = 1
 start_after = [ "policy_module", "remote_storage" ]
 [[registry.create_entry]]
-key_name = "_registry:init:registry_addr"
+key_name = "_registry:init:default_registry_addr"
 value = "https://test.registry.colearn.cloud"
 [[registry.create_entry]]
-key_name = "_registry:init:registry_jwt"
+key_name = "_registry:init:default_registry_jwt"
 value = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwcml2aWxlZ2UiOiJndWVzdCIsInVzZXJfaWQiOiIwMzNmMTFjNGJhZGEzMzhhZWZkNjExYmE5ZmFjNWU1NmMwNmQ3NjFjNTYwNzFkYjVmYmQyYjFiNTBiMjg3MDkwYjUiLCJleHAiOjE2OTYyODI4MDh9.aiS-cEkTKhCUlNKwZqQFlGQgXIG8R6jK5tpDY35IHBo"

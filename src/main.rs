@@ -3,7 +3,7 @@ use colink_server::server::init_and_run_server;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "CoLink", about = "CoLink")]
+#[command(name = "CoLink", about = "CoLink", version)]
 struct CommandLineArgs {
     /// Address of CoLink server
     // short and long flags (-d, --debug) will be deduced from the field's name
