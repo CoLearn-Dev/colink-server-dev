@@ -5,13 +5,13 @@ use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthIntercepto
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use secp256k1::Secp256k1;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{
     transport::{Certificate, Identity, Server, ServerTlsConfig},
@@ -24,6 +24,7 @@ pub struct MyService {
     pub storage: Box<dyn StorageWithSubscription>,
     pub jwt_secret: [u8; 32],
     pub mq: Box<dyn MQ>,
+    pub imported_users: RwLock<HashSet<String>>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
     pub task_storage_mutex: Mutex<i32>,
     pub public_key: secp256k1::PublicKey,
@@ -256,6 +257,7 @@ async fn run_server(
         )),
         jwt_secret,
         mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
+        imported_users: RwLock::new(HashSet::new()),
         task_storage_mutex: Mutex::new(0),
         secret_key: core_secret_key,
         public_key: core_public_key,

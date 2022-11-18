@@ -19,7 +19,10 @@ impl crate::server::MyService {
         };
         let version = env!("CARGO_PKG_VERSION").to_string();
         Ok(Response::new(RequestInfoResponse {
-            mq_uri: match Self::check_privilege_in(request.metadata(), &["user", "host"]) {
+            mq_uri: match self
+                .check_privilege_in(request.metadata(), &["user", "host"])
+                .await
+            {
                 Ok(_) => {
                     let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
                     match self._internal_storage_read(&user_id, "mq_uri").await {

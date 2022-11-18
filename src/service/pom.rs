@@ -17,7 +17,8 @@ impl crate::server::MyService {
         &self,
         request: Request<StartProtocolOperatorRequest>,
     ) -> Result<Response<ProtocolOperatorInstanceId>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         if privilege != "host"
             && Self::get_key_from_metadata(request.metadata(), "user_id")
@@ -202,7 +203,8 @@ impl crate::server::MyService {
         &self,
         request: Request<ProtocolOperatorInstanceId>,
     ) -> Result<Response<Empty>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let user_id = self
             ._host_storage_read(&format!(
