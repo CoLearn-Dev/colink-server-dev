@@ -67,7 +67,7 @@ impl crate::server::MyService {
                 && !self.imported_users.read().await.contains(user_id)
             {
                 Err(Status::permission_denied(format!(
-                    "User not exist: {}",
+                    "User {} in the JWT is created before the latest server start.",
                     user_id
                 )))
             } else {
