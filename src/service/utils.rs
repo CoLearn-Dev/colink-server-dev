@@ -55,13 +55,24 @@ impl crate::server::MyService {
         Ok(client)
     }
 
-    pub fn check_privilege_in(
+    pub async fn check_privilege_in(
+        &self,
         request_metadata: &MetadataMap,
         privileges: &[&str],
     ) -> Result<(), Status> {
         let privilege = request_metadata.get("privilege").unwrap().to_str().unwrap();
         if privileges.contains(&privilege) {
-            Ok(())
+            let user_id = request_metadata.get("user_id").unwrap().to_str().unwrap();
+            if ["user", "guest"].contains(&privilege)
+                && !self.imported_users.read().await.contains(user_id)
+            {
+                Err(Status::permission_denied(format!(
+                    "User {} in the JWT is created before the latest server start.",
+                    user_id
+                )))
+            } else {
+                Ok(())
+            }
         } else {
             Err(Status::permission_denied(format!(
                 "This procedure requires specific privileges[{:?}], while you provide[{}].",

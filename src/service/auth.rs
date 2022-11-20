@@ -28,7 +28,8 @@ impl crate::server::MyService {
         request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
         debug!("Got a request: {:?}", request);
-        Self::check_privilege_in(request.metadata(), &["user"])?;
+        self.check_privilege_in(request.metadata(), &["user"])
+            .await?;
         let token = request.metadata().get("authorization").unwrap().clone();
         let token = token.to_str().unwrap();
         let body: GenerateTokenRequest = request.into_inner();
@@ -64,7 +65,8 @@ impl crate::server::MyService {
         request: Request<UserConsent>,
         service: Arc<MyService>,
     ) -> Result<Response<Jwt>, Status> {
-        Self::check_privilege_in(request.metadata(), &["host"])?;
+        self.check_privilege_in(request.metadata(), &["host"])
+            .await?;
         let body: UserConsent = request.into_inner();
         let user_consent_to_be_stored: UserConsent = body.clone();
         let user_consent_to_be_checked: UserConsent = body.clone();
@@ -123,6 +125,7 @@ impl crate::server::MyService {
             }
             Ok::<(), Box<dyn std::error::Error + Send + Sync + 'static>>(())
         });
+        self.imported_users.write().await.insert(user_id);
         let reply = Jwt { jwt: token };
         Ok(Response::new(reply))
     }

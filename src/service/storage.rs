@@ -7,7 +7,8 @@ impl crate::server::MyService {
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
@@ -26,7 +27,8 @@ impl crate::server::MyService {
         &self,
         request: Request<StorageEntries>,
     ) -> Result<Response<StorageEntries>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let body: StorageEntries = request.into_inner();
@@ -106,7 +108,8 @@ impl crate::server::MyService {
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
@@ -129,7 +132,8 @@ impl crate::server::MyService {
         &self,
         request: Request<StorageEntry>,
     ) -> Result<Response<StorageEntry>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let body: StorageEntry = request.into_inner();
         let key_name: String = body.key_name;
@@ -151,7 +155,8 @@ impl crate::server::MyService {
         &self,
         request: Request<ReadKeysRequest>,
     ) -> Result<Response<StorageEntries>, Status> {
-        Self::check_privilege_in(request.metadata(), &["user", "host"])?;
+        self.check_privilege_in(request.metadata(), &["user", "host"])
+            .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let body: ReadKeysRequest = request.into_inner();
