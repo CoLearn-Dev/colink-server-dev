@@ -28,10 +28,44 @@ impl crate::server::MyService {
         request: Request<GenerateTokenRequest>,
     ) -> Result<Response<Jwt>, Status> {
         debug!("Got a request: {:?}", request);
-        self.check_privilege_in(request.metadata(), &["user"])
-            .await?;
-        let token = request.metadata().get("authorization").unwrap().clone();
-        let token = token.to_str().unwrap();
+        let user_id = match self.check_privilege_in(request.metadata(), &["user"]).await {
+            Ok(_) => Self::get_key_from_metadata(request.metadata(), "user_id"),
+            Err(e) => match &request.get_ref().user_consent {
+                Some(user_consent) => {
+                    self.check_user_consent(user_consent, &self.public_key.serialize())?;
+                    let user_public_key = PublicKey::from_slice(&user_consent.public_key).unwrap();
+                    let user_id = hex::encode(&user_public_key.serialize());
+                    if self.imported_users.read().await.contains(&user_id) {
+                        let old_user_consent = self
+                            ._internal_storage_read(&user_id, "user_consent")
+                            .await?;
+                        let old_user_consent: UserConsent =
+                            Message::decode(&*old_user_consent).unwrap();
+                        if user_consent.expiration_timestamp > old_user_consent.expiration_timestamp
+                        {
+                            let mut user_consent_bytes: Vec<u8> = vec![];
+                            user_consent.encode(&mut user_consent_bytes).unwrap();
+                            self._internal_storage_update(
+                                &user_id,
+                                "user_consent",
+                                &user_consent_bytes,
+                            )
+                            .await?;
+                        }
+                        user_id
+                    } else {
+                        return Err(Status::permission_denied(format!(
+                            "User {} in the consent does not exist.",
+                            user_id
+                        )));
+                    }
+                }
+                None => {
+                    return Err(e);
+                }
+            },
+        };
+
         let body: GenerateTokenRequest = request.into_inner();
         if !["user", "guest"].contains(&body.privilege.as_str()) {
             return Err(Status::permission_denied(format!(
@@ -39,18 +73,11 @@ impl crate::server::MyService {
                 body.privilege
             )));
         }
-        let token = jsonwebtoken::decode::<AuthContent>(
-            token,
-            &jsonwebtoken::DecodingKey::from_secret(&self.jwt_secret),
-            &jsonwebtoken::Validation::default(),
-        )
-        .unwrap();
-        let token = token.claims;
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &AuthContent {
                 privilege: body.privilege,
-                user_id: token.user_id,
+                user_id,
                 exp: body.expiration_time,
             },
             &jsonwebtoken::EncodingKey::from_secret(&self.jwt_secret),
