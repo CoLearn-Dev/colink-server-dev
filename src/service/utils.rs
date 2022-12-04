@@ -274,8 +274,8 @@ impl crate::server::MyService {
             ))
             .unwrap();
             let signature = match RecoverableSignature::from_compact(
-                user_consent_signature,
-                RecoveryId::from_i32(0).unwrap(),
+                &user_consent_signature[..64],
+                RecoveryId::from_i32(user_consent_signature[64] as i32 - 27).unwrap(),
             ) {
                 Ok(sig) => sig,
                 Err(e) => {
