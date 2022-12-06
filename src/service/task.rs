@@ -664,11 +664,11 @@ impl crate::server::MyService {
                 )))
             }
         }
-        let user_public_key_vec_from_userconsent =
+        let user_public_key_vec_from_user_consent =
             self.check_user_consent(decision.user_consent.as_ref().unwrap(), core_public_key_vec)?;
         // After checking user consent, we need to verify that the user_id match up with the UserConsent's user public key.
-        let user_pubilc_key_vec_from_userid = hex::decode(user_id).unwrap();
-        if user_pubilc_key_vec_from_userid != user_public_key_vec_from_userconsent {
+        let user_public_key_vec_from_user_id = hex::decode(user_id).unwrap();
+        if user_public_key_vec_from_user_id != user_public_key_vec_from_user_consent {
             return Err(Status::invalid_argument(
                 "UserConsent is not for the current participant",
             ));

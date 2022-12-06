@@ -226,6 +226,7 @@ impl crate::server::MyService {
         let user_consent_expiration_timestamp: i64 = user_consent.expiration_timestamp;
         let user_consent_signature: &Vec<u8> = &user_consent.signature;
         if !user_consent.public_key.is_empty() {
+            // Non-MetaMask
             let user_consent_signature = match Signature::from_compact(user_consent_signature) {
                 Ok(sig) => sig,
                 Err(e) => {
@@ -263,6 +264,7 @@ impl crate::server::MyService {
                 ))),
             }
         } else {
+            // MetaMask
             let msg = format!(
                 "sigTime: {}\nexpTime: {}\ncorePubKey: {}\n",
                 user_consent_signature_timestamp,
