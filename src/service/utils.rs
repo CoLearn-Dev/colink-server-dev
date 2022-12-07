@@ -1,7 +1,11 @@
 use crate::colink_proto::{co_link_client::CoLinkClient, UserConsent};
 use futures_lite::StreamExt;
-use secp256k1::{ecdsa::Signature, PublicKey, Secp256k1};
+use secp256k1::{
+    ecdsa::{RecoverableSignature, RecoveryId, Signature},
+    PublicKey, Secp256k1,
+};
 use sha2::{Digest, Sha256};
+use sha3::Keccak256;
 use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -217,49 +221,81 @@ impl crate::server::MyService {
         &self,
         user_consent: &UserConsent,
         core_public_key_vec: &[u8],
-    ) -> Result<(), Status> {
+    ) -> Result<Vec<u8>, Status> {
         let user_consent_signature_timestamp: i64 = user_consent.signature_timestamp;
         let user_consent_expiration_timestamp: i64 = user_consent.expiration_timestamp;
         let user_consent_signature: &Vec<u8> = &user_consent.signature;
-        let user_consent_signature = match Signature::from_compact(user_consent_signature) {
-            Ok(sig) => sig,
-            Err(e) => {
-                return Err(Status::invalid_argument(format!(
-                    "The user consent signature could not be decoded in ECDSA: {}",
-                    e
-                )))
-            }
-        };
-        let mut user_public_key_vec: Vec<u8> = user_consent.clone().public_key;
-        let user_public_key: PublicKey = match PublicKey::from_slice(&user_public_key_vec) {
-            Ok(pk) => pk,
-            Err(e) => {
-                return Err(Status::invalid_argument(format!(
-                    "The public key could not be decoded in compressed serialized format: {:?}",
-                    e
-                )))
-            }
-        };
-        user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
-        user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
-        user_public_key_vec.extend_from_slice(core_public_key_vec);
-        let verify_consent_signature =
-            secp256k1::Message::from_slice(&Sha256::digest(&user_public_key_vec)).unwrap();
-        let secp = Secp256k1::new();
-        match secp.verify_ecdsa(
-            &verify_consent_signature,
-            &user_consent_signature,
-            &user_public_key,
-        ) {
-            Ok(_) => {}
-            Err(e) => {
-                return Err(Status::invalid_argument(format!(
+        if !user_consent.public_key.is_empty() {
+            // Non-MetaMask
+            let user_consent_signature = match Signature::from_compact(user_consent_signature) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    return Err(Status::invalid_argument(format!(
+                        "The user consent signature could not be decoded in ECDSA: {}",
+                        e
+                    )))
+                }
+            };
+            let mut user_public_key_vec: Vec<u8> = user_consent.clone().public_key;
+            let user_public_key: PublicKey = match PublicKey::from_slice(&user_public_key_vec) {
+                Ok(pk) => pk,
+                Err(e) => {
+                    return Err(Status::invalid_argument(format!(
+                        "The public key could not be decoded in compressed serialized format: {:?}",
+                        e
+                    )))
+                }
+            };
+            user_public_key_vec.extend_from_slice(&user_consent_signature_timestamp.to_le_bytes());
+            user_public_key_vec.extend_from_slice(&user_consent_expiration_timestamp.to_le_bytes());
+            user_public_key_vec.extend_from_slice(core_public_key_vec);
+            let verify_consent_signature =
+                secp256k1::Message::from_slice(&Sha256::digest(&user_public_key_vec)).unwrap();
+            let secp = Secp256k1::new();
+            match secp.verify_ecdsa(
+                &verify_consent_signature,
+                &user_consent_signature,
+                &user_public_key,
+            ) {
+                Ok(_) => Ok(user_consent.clone().public_key),
+                Err(e) => Err(Status::invalid_argument(format!(
                     "Invalid User Consent Signature: {}",
                     e
-                )))
+                ))),
+            }
+        } else {
+            // MetaMask
+            let msg = format!(
+                "sigTime: {}\nexpTime: {}\ncorePubKey: {}\n",
+                user_consent_signature_timestamp,
+                user_consent_expiration_timestamp,
+                hex::encode(core_public_key_vec)
+            );
+            let msg = secp256k1::Message::from_slice(&Keccak256::digest(
+                format!("{}{}{}", "\x19Ethereum Signed Message:\n", msg.len(), msg).as_bytes(),
+            ))
+            .unwrap();
+            let signature = match RecoverableSignature::from_compact(
+                &user_consent_signature[..64],
+                RecoveryId::from_i32(user_consent_signature[64] as i32 - 27).unwrap(),
+            ) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    return Err(Status::invalid_argument(format!(
+                        "The user consent signature could not be decoded in ECDSA: {}",
+                        e
+                    )))
+                }
+            };
+            let secp = Secp256k1::new();
+            match secp.recover_ecdsa(&msg, &signature) {
+                Ok(public_key) => Ok(public_key.serialize().to_vec()),
+                Err(e) => Err(Status::invalid_argument(format!(
+                    "Invalid User Consent Signature: {}",
+                    e
+                ))),
             }
         }
-        Ok(())
     }
 
     pub fn get_host_id(&self) -> String {
