@@ -236,7 +236,7 @@ async fn run_server(
         let (core_secret_key, _core_public_key) =
             secp.generate_keypair(&mut secp256k1::rand::thread_rng());
         let mut file = std::fs::File::create("init_state/priv_key.txt")?;
-        file.write_all(hex::encode(&core_secret_key.serialize_secret()).as_bytes())?;
+        file.write_all(hex::encode(&core_secret_key.secret_bytes()).as_bytes())?;
     }
     let mut file = std::fs::File::open("init_state/jwt_secret.txt")?;
     let mut buffer = Vec::new();
