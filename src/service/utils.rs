@@ -299,7 +299,7 @@ impl crate::server::MyService {
     }
 
     pub fn get_host_id(&self) -> String {
-        hex::encode(&self.public_key.serialize())
+        hex::encode(self.public_key.serialize())
     }
 
     pub fn get_colink_home(&self) -> Result<String, Status> {

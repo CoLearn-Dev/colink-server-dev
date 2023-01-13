@@ -95,7 +95,7 @@ impl crate::server::MyService {
                 match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
                     Ok(_) => {}
                     Err(err) => {
-                        return Err(Status::not_found(&format!(
+                        return Err(Status::not_found(format!(
                             "protocol {} not found from inventory: {}",
                             protocol_name, err
                         )));
