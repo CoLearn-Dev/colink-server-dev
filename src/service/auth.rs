@@ -35,7 +35,7 @@ impl crate::server::MyService {
                     let user_public_key =
                         self.check_user_consent(user_consent, &self.public_key.serialize())?;
                     let user_public_key = PublicKey::from_slice(&user_public_key).unwrap();
-                    let user_id = hex::encode(&user_public_key.serialize());
+                    let user_id = hex::encode(user_public_key.serialize());
                     if self.imported_users.read().await.contains(&user_id) {
                         let old_user_consent = self
                             ._internal_storage_read(&user_id, "user_consent")
@@ -101,7 +101,8 @@ impl crate::server::MyService {
         let signature_timestamp: i64 = body.signature_timestamp;
         let expiration_timestamp: i64 = body.expiration_timestamp;
         if chrono::Utc
-            .timestamp(signature_timestamp, 0)
+            .timestamp_opt(signature_timestamp, 0)
+            .unwrap()
             .signed_duration_since(chrono::Utc::now())
             .num_seconds()
             .abs()
@@ -122,7 +123,7 @@ impl crate::server::MyService {
                 )))
             }
         };
-        let user_id = hex::encode(&user_public_key.serialize());
+        let user_id = hex::encode(user_public_key.serialize());
         let mut user_consent_bytes: Vec<u8> = vec![];
         user_consent_to_be_stored
             .encode(&mut user_consent_bytes)
