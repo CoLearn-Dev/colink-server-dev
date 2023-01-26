@@ -28,7 +28,7 @@ impl crate::server::MyService {
         task.decisions
             .resize(task.participants.len(), Default::default());
         task.task_id = task_id.to_string();
-        task.status = if task.require_agreement {
+        task.status = if task.require_agreement && task.participants.len() > 1 {
             "approved".to_string()
         } else {
             "started".to_string()
