@@ -23,7 +23,7 @@ use tracing::error;
 pub struct MyService {
     pub storage: Box<dyn StorageWithSubscription>,
     pub jwt_secret: [u8; 32],
-    pub mq: Box<dyn MQ>,
+    pub mq: Arc<dyn MQ>,
     pub imported_users: RwLock<HashSet<String>>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
     pub task_storage_mutex: Mutex<i32>,
@@ -250,13 +250,14 @@ async fn run_server(
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let host_id = hex::encode(core_public_key.serialize());
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
+    let mq = Arc::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix));
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::<BasicStorage>::default(),
-            Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
+            mq.clone(),
         )),
         jwt_secret,
-        mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
+        mq: mq.clone(),
         imported_users: RwLock::new(HashSet::new()),
         task_storage_mutex: Mutex::new(0),
         secret_key: core_secret_key,
@@ -277,7 +278,7 @@ async fn run_server(
             &inter_core_key.as_path().display().to_string(),
         );
     }
-    service.mq.delete_all_accounts().await?;
+    mq.delete_all_accounts().await?;
     let grpc_service = GrpcService {
         service: Arc::new(service),
     };

@@ -3,12 +3,12 @@ use crate::mq::common::MQ;
 use crate::storage::common::Storage;
 use prost::Message;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 
 pub struct StorageWithMQSubscription {
     storage: Box<dyn Storage>,
-    mq: Box<dyn MQ>,
+    mq: Arc<dyn MQ>,
     key_subscription_count: Mutex<HashMap<String, i32>>,
     queue_name_to_user_id_key_name: Mutex<HashMap<String, String>>,
     lock: RwLock<i32>,
@@ -158,7 +158,7 @@ impl crate::subscription::common::StorageWithSubscription for StorageWithMQSubsc
 }
 
 impl StorageWithMQSubscription {
-    pub fn new(storage: Box<dyn Storage>, mq: Box<dyn MQ>) -> StorageWithMQSubscription {
+    pub fn new(storage: Box<dyn Storage>, mq: Arc<dyn MQ>) -> StorageWithMQSubscription {
         Self {
             storage,
             mq,
