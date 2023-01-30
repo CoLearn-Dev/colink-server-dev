@@ -14,7 +14,7 @@ struct CommandLineArgs {
     #[arg(short, long, env = "COLINK_SERVER_PORT")]
     port: u16,
 
-    /// AMQP URI of MQ
+    /// URI of MQ (AMQP or Redis)
     #[arg(long, env = "COLINK_SERVER_MQ_URI")]
     mq_uri: String,
 
