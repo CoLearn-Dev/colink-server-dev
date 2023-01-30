@@ -1,6 +1,6 @@
 use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
-use crate::mq::{common::MQ, rabbitmq::RabbitMQ};
+use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
@@ -251,6 +251,7 @@ async fn run_server(
     let host_id = hex::encode(core_public_key.serialize());
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
     let mq = Arc::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix));
+    // let mq = Arc::new(RedisStream::new("redis://127.0.0.1/"));
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::<BasicStorage>::default(),
