@@ -1,12 +1,6 @@
-use redis::{
-    acl::Rule,
-    aio::Connection,
-    streams::{StreamReadOptions, StreamReadReply},
-    AsyncCommands, FromRedisValue,
-};
+use redis::{acl::Rule, aio::Connection, AsyncCommands};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
-use tracing::debug;
 
 #[derive(Default)]
 pub struct RedisStream {
@@ -120,7 +114,7 @@ impl crate::mq::common::MQ for RedisStream {
         let mut con = self.connect().await?;
         let queue_name = if queue_name.is_empty() {
             passwords::PasswordGenerator::new()
-                .length(16)
+                .length(24)
                 .numbers(true)
                 .lowercase_letters(true)
                 .generate_one()
@@ -128,6 +122,12 @@ impl crate::mq::common::MQ for RedisStream {
         } else {
             queue_name.to_string()
         };
+        let user_uri = match url::Url::parse(&user_uri) {
+            Ok(uri) => uri,
+            Err(e) => return Err(format!("URI Parse Error: {}", e)),
+        };
+        let user_name = user_uri.username();
+        let queue_name = format!("{}:{}", user_name, queue_name);
         match con
             .xgroup_create_mkstream::<&str, &str, &str, ()>(&queue_name, &queue_name, "$")
             .await
@@ -138,7 +138,7 @@ impl crate::mq::common::MQ for RedisStream {
         Ok(queue_name)
     }
 
-    async fn delete_queue(&self, user_uri: &str, queue_name: &str) -> Result<(), String> {
+    async fn delete_queue(&self, _user_uri: &str, queue_name: &str) -> Result<(), String> {
         let mut con = self.connect().await?;
         match con
             .xgroup_destroy::<&str, &str, ()>(&queue_name, &queue_name)
@@ -168,7 +168,7 @@ impl crate::mq::common::MQ for RedisStream {
 
     async fn publish_message(
         &self,
-        user_uri: &str,
+        _user_uri: &str,
         key: &str,
         payload: &[u8],
     ) -> Result<(), String> {
