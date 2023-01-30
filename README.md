@@ -38,7 +38,7 @@ CoLink server requires a [message queue](#set-up-rabbitmq) as its building block
 
 Use the following command to start the CoLink server
 ```
-cargo run -- --address <address> --port <port> --mq-amqp <amqp uri> --mq-api <mq api> --mq-prefix <mq prefix> \
+cargo run -- --address <address> --port <port> --mq-uri <mq uri> --mq-api <mq api> --mq-prefix <mq prefix> \
  --core-uri <core uri> --cert <server certificate> --key <server key> --ca <client ca certificate> \
  --inter-core-ca <inter-core-ca> --inter-core-cert <inter-core-cert> --inter-core-key <inter-core-key>
 ```
@@ -47,15 +47,15 @@ For the details about the parameters, please check [here](src/main.rs#L7).
 ### Example
 Without TLS
 ```bash
-cargo run -- --address "127.0.0.1" --port 8080 --mq-amqp amqp://guest:guest@localhost:5672 --mq-api http://guest:guest@localhost:15672/api --core-uri http://127.0.0.1:8080
+cargo run -- --address "127.0.0.1" --port 8080 --mq-uri amqp://guest:guest@localhost:5672 --mq-api http://guest:guest@localhost:15672/api --core-uri http://127.0.0.1:8080
 ```
 TLS
 ```bash
-cargo run -- --address "127.0.0.1" --port 8080 --mq-amqp <amqp uri> --mq-api <mq api> --cert <path to server-fullchain.pem> --key <path to server-key.pem> --inter-core-ca <path to ca.pem>
+cargo run -- --address "127.0.0.1" --port 8080 --mq-uri <mq uri> --mq-api <mq api> --cert <path to server-fullchain.pem> --key <path to server-key.pem> --inter-core-ca <path to ca.pem>
 ```
 mTLS
 ```bash
-cargo run -- --address "127.0.0.1" --port 8080 --mq-amqp <amqp uri> --mq-api <mq api> --cert <path to server-fullchain.pem> --key <path to server-key.pem> --ca <path to ca.pem> --inter-core-ca <path to ca.pem> --inter-core-cert <path to client.pem> --inter-core-key <path to client-key.pem>
+cargo run -- --address "127.0.0.1" --port 8080 --mq-uri <mq uri> --mq-api <mq api> --cert <path to server-fullchain.pem> --key <path to server-key.pem> --ca <path to ca.pem> --inter-core-ca <path to ca.pem> --inter-core-cert <path to client.pem> --inter-core-key <path to client-key.pem>
 ```
 
 ## Test the server

@@ -72,7 +72,7 @@ impl crate::mq::common::MQ for RedisStream {
     }
 
     async fn delete_user_account(&self, user_uri: &str) -> Result<(), String> {
-        let user_uri = match url::Url::parse(&user_uri) {
+        let user_uri = match url::Url::parse(user_uri) {
             Ok(uri) => uri,
             Err(e) => return Err(format!("URI Parse Error: {}", e)),
         };
@@ -122,7 +122,7 @@ impl crate::mq::common::MQ for RedisStream {
         } else {
             queue_name.to_string()
         };
-        let user_uri = match url::Url::parse(&user_uri) {
+        let user_uri = match url::Url::parse(user_uri) {
             Ok(uri) => uri,
             Err(e) => return Err(format!("URI Parse Error: {}", e)),
         };
@@ -141,13 +141,13 @@ impl crate::mq::common::MQ for RedisStream {
     async fn delete_queue(&self, _user_uri: &str, queue_name: &str) -> Result<(), String> {
         let mut con = self.connect().await?;
         match con
-            .xgroup_destroy::<&str, &str, ()>(&queue_name, &queue_name)
+            .xgroup_destroy::<&str, &str, ()>(queue_name, queue_name)
             .await
         {
             Ok(_) => {}
             Err(e) => return Err(format!("RedisStream Group Deletion Error: {}", e)),
         };
-        match con.del::<&str, ()>(&queue_name).await {
+        match con.del::<&str, ()>(queue_name).await {
             Ok(_) => {}
             Err(e) => return Err(format!("RedisStream Stream Deletion Error: {}", e)),
         };

@@ -15,14 +15,14 @@ struct CommandLineArgs {
     port: u16,
 
     /// AMQP URI of MQ
-    #[arg(long, env = "COLINK_SERVER_MQ_AMQP")]
-    mq_amqp: String,
+    #[arg(long, env = "COLINK_SERVER_MQ_URI")]
+    mq_uri: String,
 
-    /// Management API of MQ
+    /// Management API of MQ, only required by RabbitMQ
     #[arg(long, env = "COLINK_SERVER_MQ_API")]
-    mq_api: String,
+    mq_api: Option<String>,
 
-    /// Prefix of MQ
+    /// Prefix of MQ, for RabbitMQ only
     #[arg(long, env = "COLINK_SERVER_MQ_PREFIX", default_value = "colink")]
     mq_prefix: String,
 
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let CommandLineArgs {
         address,
         port,
-        mq_amqp,
+        mq_uri,
         mq_api,
         mq_prefix,
         core_uri,
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_and_run_server(
         address,
         port,
-        mq_amqp,
+        mq_uri,
         mq_api,
         mq_prefix,
         core_uri,
