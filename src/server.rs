@@ -2,7 +2,7 @@ use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
 use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
-use crate::service::utils::get_colink_home;
+use crate::service::utils::{download_tgz, get_colink_home};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use rand::Rng;
@@ -371,7 +371,17 @@ async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::erro
         .uppercase_letters(true);
     let password = pg.generate_one()?;
     let colink_home = get_colink_home()?;
-    let process = Command::new("")
+    let redis_home = Path::new(&colink_home).join("redis-server");
+    let program = Path::new(&redis_home).join("redis-server");
+    if std::fs::metadata(program.clone()).is_err() {
+        download_tgz(
+            "https://github.com/CoLearn-Dev/redis-static-binaries/releases/download/7.0.8/redis-server.tar.gz",
+            "a28519717820c8af1d7d2371eeb17feb2abb4d70651f1a975b57977f9be7aacc",
+            redis_home.to_str().unwrap(),
+        )
+        .await?;
+    }
+    let process = Command::new(program)
         .args([
             "--port",
             &port.to_string(),
