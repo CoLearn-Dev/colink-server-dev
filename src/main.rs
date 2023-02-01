@@ -16,7 +16,7 @@ struct CommandLineArgs {
 
     /// URI of MQ (AMQP or Redis)
     #[arg(long, env = "COLINK_SERVER_MQ_URI")]
-    mq_uri: String,
+    mq_uri: Option<String>,
 
     /// Management API of MQ, only required by RabbitMQ
     #[arg(long, env = "COLINK_SERVER_MQ_API")]

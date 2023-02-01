@@ -65,7 +65,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
         12300,
-        "amqp://guest:guest@localhost:5672".to_string(),
+        Some("amqp://guest:guest@localhost:5672".to_string()),
         Some("http://guest:guest@localhost:15672/api".to_string()),
         "colink-test".to_string(),
         None,

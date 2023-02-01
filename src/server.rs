@@ -4,11 +4,13 @@ use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
+use rand::Rng;
 use secp256k1::Secp256k1;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
@@ -167,7 +169,7 @@ impl CoLink for GrpcService {
 pub async fn init_and_run_server(
     address: String,
     port: u16,
-    mq_uri: String,
+    mq_uri: Option<String>,
     mq_api: Option<String>,
     mq_prefix: String,
     core_uri: Option<String>,
@@ -181,6 +183,18 @@ pub async fn init_and_run_server(
     force_gen_core_cert: bool,
     inter_core_reverse_mode: bool,
 ) {
+    let (mq_uri, _redis_server) = if mq_uri.is_none() {
+        let (redis_server, uri) = match start_redis_server().await {
+            Ok(res) => res,
+            Err(e) => {
+                error!("{}", e);
+                std::process::exit(1);
+            }
+        };
+        (uri, redis_server)
+    } else {
+        (mq_uri.unwrap(), RedisServer { process: None })
+    };
     let socket_address = format!("{}:{}", address, port).parse().unwrap();
     match run_server(
         socket_address,
@@ -330,4 +344,57 @@ async fn run_server(
             .await?;
     }
     Ok(())
+}
+
+struct RedisServer {
+    process: Option<Child>,
+}
+
+impl Drop for RedisServer {
+    fn drop(&mut self) {
+        if self.process.is_some() {
+            self.process.as_mut().unwrap().kill().unwrap();
+        }
+    }
+}
+
+async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::error::Error>> {
+    let mut port = rand::thread_rng().gen_range(10000..20000);
+    while std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+        port = rand::thread_rng().gen_range(10000..20000);
+    }
+    let pg = passwords::PasswordGenerator::new()
+        .length(32)
+        .numbers(true)
+        .lowercase_letters(true)
+        .uppercase_letters(true);
+    let password = pg.generate_one()?;
+    // let colink_home = get_colink_home()?;
+    let process = Command::new("")
+        .args([
+            "--port",
+            &port.to_string(),
+            "--requirepass",
+            &password,
+            "--save",
+            "\"\"",
+            "--appendonly",
+            "no",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    loop {
+        if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(core::time::Duration::from_millis(10));
+    }
+    Ok((
+        RedisServer {
+            process: Some(process),
+        },
+        format!("redis://:{}@127.0.0.1:{}/", password, port),
+    ))
 }
