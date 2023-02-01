@@ -2,6 +2,7 @@ use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
 use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
+use crate::service::utils::get_colink_home;
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
 use rand::Rng;
@@ -9,7 +10,7 @@ use secp256k1::Secp256k1;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -369,7 +370,7 @@ async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::erro
         .lowercase_letters(true)
         .uppercase_letters(true);
     let password = pg.generate_one()?;
-    // let colink_home = get_colink_home()?;
+    let colink_home = get_colink_home()?;
     let process = Command::new("")
         .args([
             "--port",

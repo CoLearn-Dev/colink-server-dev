@@ -302,19 +302,11 @@ impl crate::server::MyService {
         hex::encode(self.public_key.serialize())
     }
 
-    pub fn get_colink_home(&self) -> Result<String, Status> {
-        let colink_home = if std::env::var("COLINK_HOME").is_ok() {
-            std::env::var("COLINK_HOME").unwrap()
-        } else if std::env::var("HOME").is_ok() {
-            std::env::var("HOME").unwrap() + "/.colink"
-        } else {
-            return Err(Status::not_found("colink home not found."));
-        };
-        Ok(colink_home)
-    }
-
     pub fn find_resource_file(&self, file_name: &str) -> Result<PathBuf, Status> {
-        let colink_home = self.get_colink_home()?;
+        let colink_home = match get_colink_home() {
+            Ok(colink_home) => colink_home,
+            Err(e) => return Err(Status::not_found(e.to_string())),
+        };
         let mut path = Path::new(file_name).to_path_buf();
         if std::fs::metadata(&path).is_err() {
             path = Path::new(&colink_home).join(file_name);
@@ -325,6 +317,17 @@ impl crate::server::MyService {
             Err(Status::not_found(file_name.to_string()))
         }
     }
+}
+
+pub fn get_colink_home() -> Result<String, String> {
+    let colink_home = if std::env::var("COLINK_HOME").is_ok() {
+        std::env::var("COLINK_HOME").unwrap()
+    } else if std::env::var("HOME").is_ok() {
+        std::env::var("HOME").unwrap() + "/.colink"
+    } else {
+        return Err("colink home not found.".to_string());
+    };
+    Ok(colink_home)
 }
 
 pub fn generate_request<T>(jwt: &str, data: T) -> tonic::Request<T> {
