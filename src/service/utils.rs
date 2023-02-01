@@ -305,7 +305,7 @@ impl crate::server::MyService {
     pub fn find_resource_file(&self, file_name: &str) -> Result<PathBuf, Status> {
         let colink_home = match get_colink_home() {
             Ok(colink_home) => colink_home,
-            Err(e) => return Err(Status::not_found(e.to_string())),
+            Err(e) => return Err(Status::not_found(e)),
         };
         let mut path = Path::new(file_name).to_path_buf();
         if std::fs::metadata(&path).is_err() {

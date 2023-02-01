@@ -103,7 +103,7 @@ impl crate::mq::common::MQ for RedisStream {
             Err(e) => return Err(format!("RedisStream ACL WHOAMI Error: {}", e)),
         };
         users.retain(|x| x != &my_user_name);
-        if users.len() > 0 {
+        if !users.is_empty() {
             match con.acl_deluser::<String, ()>(&users).await {
                 Ok(_) => {}
                 Err(e) => return Err(format!("RedisStream ACL DELUSER Error: {}", e)),

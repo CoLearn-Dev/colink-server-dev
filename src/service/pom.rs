@@ -45,7 +45,7 @@ impl crate::server::MyService {
         // create protocols directory if not exist
         let colink_home = match get_colink_home() {
             Ok(colink_home) => colink_home,
-            Err(e) => return Err(Status::not_found(e.to_string())),
+            Err(e) => return Err(Status::not_found(e)),
         };
         if !Path::new(&colink_home).join("protocols").exists() {
             match std::fs::create_dir_all(Path::new(&colink_home).join("protocols")) {
@@ -249,7 +249,7 @@ impl crate::server::MyService {
         let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
         let colink_home = match get_colink_home() {
             Ok(colink_home) => colink_home,
-            Err(e) => return Err(Status::not_found(e.to_string())),
+            Err(e) => return Err(Status::not_found(e)),
         };
         let protocol_package_lock = get_file_lock(&colink_home, &protocol_name)?;
         let protocol_package_lock = tokio::task::spawn_blocking(move || {
