@@ -47,6 +47,6 @@ cargo run -- --address 127.0.0.1 --port 8080 --mq-uri <mq uri> --mq-api <mq api>
 ```
 
 ## Test the server
-### TODO
+Use `cargo test` to run various tests. See `tests/` for more details.
 
-
+These tests require an MQ. Please refer to [CoLink Server Setup](https://co-learn.notion.site/CoLink-Server-Setup-aa58e481e36e40cba83a002c1f3bd158) 
