@@ -50,9 +50,14 @@ async fn send_import_user_request(
     response
 }
 
+#[rstest::rstest]
+#[case(Some("amqp://guest:guest@localhost:5672".to_string()), Some("http://guest:guest@localhost:15672/api".to_string()))]
+#[case(Some("redis://localhost".to_string()), None)]
 #[tokio::test]
-async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+async fn grpc_service_storage(
+    #[case] mq_uri: Option<String>,
+    #[case] mq_api: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 12300)).is_err(),
         "listen {}:{}: address already in use.",
@@ -65,8 +70,8 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
         12300,
-        Some("amqp://guest:guest@localhost:5672".to_string()),
-        Some("http://guest:guest@localhost:15672/api".to_string()),
+        mq_uri,
+        mq_api,
         "colink-test".to_string(),
         None,
         None,

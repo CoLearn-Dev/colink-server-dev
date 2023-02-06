@@ -39,3 +39,6 @@ uuid = { version = "0.8", features = ["v4"] }
 [build-dependencies]
 prost-build = "0.10"
 tonic-build = "0.7"
+
+[dev-dependencies]
+rstest = "0.16"
