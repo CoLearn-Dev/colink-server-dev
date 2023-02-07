@@ -50,14 +50,9 @@ async fn send_import_user_request(
     response
 }
 
-#[rstest::rstest]
-#[case(Some("amqp://guest:guest@localhost:5672".to_string()), Some("http://guest:guest@localhost:15672/api".to_string()))]
-#[case(Some("redis://localhost".to_string()), None)]
 #[tokio::test]
-async fn grpc_service_storage(
-    #[case] mq_uri: Option<String>,
-    #[case] mq_api: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
     assert!(
         std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 12300)).is_err(),
         "listen {}:{}: address already in use.",
@@ -67,6 +62,16 @@ async fn grpc_service_storage(
     if std::fs::metadata("host_token.txt").is_ok() {
         std::fs::remove_file("host_token.txt")?;
     }
+    let (mq_uri, mq_api) = if std::env::var("COLINK_TEST_MQ").is_ok()
+        && std::env::var("COLINK_TEST_MQ").unwrap() == "redis"
+    {
+        (Some("redis://localhost".to_string()), None)
+    } else {
+        (
+            Some("amqp://guest:guest@localhost:5672".to_string()),
+            Some("http://guest:guest@localhost:15672/api".to_string()),
+        )
+    };
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
         12300,

@@ -1,14 +1,18 @@
 use ::colink_server::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 
-#[rstest::rstest]
-#[case(Box::new(RabbitMQ::new(
-    "amqp://guest:guest@localhost:5672",
-    "http://guest:guest@localhost:15672/api",
-    "colink-test"
-)))]
-#[case(Box::new(RedisStream::new("redis://localhost")))]
 #[tokio::test]
-async fn user_and_vhost(#[case] mq: Box<dyn MQ>) -> Result<(), Box<dyn std::error::Error>> {
+async fn user_and_vhost() -> Result<(), Box<dyn std::error::Error>> {
+    let mq: Box<dyn MQ> = if std::env::var("COLINK_TEST_MQ").is_ok()
+        && std::env::var("COLINK_TEST_MQ").unwrap() == "redis"
+    {
+        Box::new(RedisStream::new("redis://localhost"))
+    } else {
+        Box::new(RabbitMQ::new(
+            "amqp://guest:guest@localhost:5672",
+            "http://guest:guest@localhost:15672/api",
+            "colink-test",
+        ))
+    };
     let uri = mq.create_user_account().await?;
     println!("MQ URI: {}", uri);
     let queue_name = mq.create_queue(&uri, "").await?;

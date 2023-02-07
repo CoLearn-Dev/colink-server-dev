@@ -12,6 +12,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    strategy:
+      matrix:
+        mq: [rabbitmq, redis]
     services:
       rabbitmq:
         image: rabbitmq:3.8-management
@@ -40,4 +43,6 @@ jobs:
       - name: Clippy test
         run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
       - name: Run tests
+        env:
+          COLINK_TEST_MQ: ${{ matrix.mq }}
         run: cargo test
