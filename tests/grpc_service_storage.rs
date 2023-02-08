@@ -62,10 +62,15 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
     if std::fs::metadata("host_token.txt").is_ok() {
         std::fs::remove_file("host_token.txt")?;
     }
-    let (mq_uri, mq_api) = if std::env::var("COLINK_TEST_MQ").is_ok()
-        && std::env::var("COLINK_TEST_MQ").unwrap() == "redis"
-    {
-        (Some("redis://localhost".to_string()), None)
+    let (mq_uri, mq_api) = if std::env::var("COLINK_SERVER_MQ_URI").is_ok() {
+        (
+            Some(std::env::var("COLINK_SERVER_MQ_URI").unwrap()),
+            if std::env::var("COLINK_SERVER_MQ_API").is_ok() {
+                Some(std::env::var("COLINK_SERVER_MQ_API").unwrap())
+            } else {
+                None
+            },
+        )
     } else {
         (
             Some("amqp://guest:guest@localhost:5672".to_string()),

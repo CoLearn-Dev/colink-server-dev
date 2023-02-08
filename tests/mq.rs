@@ -2,10 +2,26 @@ use ::colink_server::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 
 #[tokio::test]
 async fn user_and_vhost() -> Result<(), Box<dyn std::error::Error>> {
-    let mq: Box<dyn MQ> = if std::env::var("COLINK_TEST_MQ").is_ok()
-        && std::env::var("COLINK_TEST_MQ").unwrap() == "redis"
-    {
-        Box::new(RedisStream::new("redis://localhost"))
+    let mq: Box<dyn MQ> = if std::env::var("COLINK_SERVER_MQ_URI").is_ok() {
+        if std::env::var("COLINK_SERVER_MQ_URI")
+            .unwrap()
+            .starts_with("amqp")
+        {
+            Box::new(RabbitMQ::new(
+                &std::env::var("COLINK_SERVER_MQ_URI").unwrap(),
+                &std::env::var("COLINK_SERVER_MQ_API").unwrap(),
+                "colink-test",
+            ))
+        } else if std::env::var("COLINK_SERVER_MQ_URI")
+            .unwrap()
+            .starts_with("redis")
+        {
+            Box::new(RedisStream::new(
+                &std::env::var("COLINK_SERVER_MQ_URI").unwrap(),
+            ))
+        } else {
+            Err("MQ_URI is not supported.".to_string())?
+        }
     } else {
         Box::new(RabbitMQ::new(
             "amqp://guest:guest@localhost:5672",
