@@ -265,7 +265,7 @@ async fn run_server(
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
     let uri_parsed = url::Url::parse(&mq_uri)?;
     let mq: Arc<dyn MQ> = if uri_parsed.scheme().starts_with("redis") {
-        Arc::new(RedisStream::new(&mq_uri))
+        Arc::new(RedisStream::new(&mq_uri, &mq_prefix))
     } else {
         if mq_api.is_none() {
             Err("--mq-api <MQ_API> must be provided.")?;

@@ -10,9 +10,10 @@ pub struct RedisStream {
 }
 
 impl RedisStream {
-    pub fn new(redis_uri: &str) -> Self {
+    pub fn new(redis_uri: &str, mq_prefix: &str) -> Self {
         Self {
             redis_uri: redis_uri.to_string(),
+            mq_prefix: mq_prefix.to_string(),
             ..Default::default()
         }
     }

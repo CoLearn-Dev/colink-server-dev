@@ -18,6 +18,7 @@ async fn user_and_vhost() -> Result<(), Box<dyn std::error::Error>> {
         {
             Box::new(RedisStream::new(
                 &std::env::var("COLINK_SERVER_MQ_URI").unwrap(),
+                "colink-test",
             ))
         } else {
             Err("MQ_URI is not supported.".to_string())?
