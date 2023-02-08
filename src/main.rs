@@ -22,7 +22,7 @@ struct CommandLineArgs {
     #[arg(long, env = "COLINK_SERVER_MQ_API")]
     mq_api: Option<String>,
 
-    /// Prefix of MQ, for RabbitMQ only
+    /// Prefix of MQ
     #[arg(long, env = "COLINK_SERVER_MQ_PREFIX", default_value = "colink")]
     mq_prefix: String,
 

@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 #[derive(Default)]
 pub struct RedisStream {
     redis_uri: String,
+    mq_prefix: String,
     routing_table: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
@@ -59,7 +60,7 @@ impl crate::mq::common::MQ for RedisStream {
                 &[
                     Rule::On,
                     Rule::AddPass(password.to_owned()),
-                    Rule::Pattern(format!("{}:*", username).to_owned()),
+                    Rule::Pattern(format!("{}--{}:*", self.mq_prefix, username).to_owned()),
                     Rule::AddCategory("stream".to_owned()),
                 ],
             )
@@ -78,6 +79,19 @@ impl crate::mq::common::MQ for RedisStream {
         };
         let user_name = user_uri.username();
         let mut con = self.connect().await?;
+        let key_list: Vec<String> = match con
+            .keys(format!("{}--{}:*", self.mq_prefix, user_name))
+            .await
+        {
+            Ok(key_list) => key_list,
+            Err(e) => return Err(format!("RedisStream KEYS Error: {}", e)),
+        };
+        if !key_list.is_empty() {
+            match con.del::<&[String], ()>(&key_list).await {
+                Ok(_) => {}
+                Err(e) => return Err(format!("RedisStream DEL Error: {}", e)),
+            };
+        }
         match con.acl_deluser::<&str, ()>(&[user_name]).await {
             Ok(_) => {}
             Err(e) => return Err(format!("RedisStream ACL DELUSER Error: {}", e)),
@@ -87,12 +101,15 @@ impl crate::mq::common::MQ for RedisStream {
 
     async fn delete_all_accounts(&self) -> Result<(), String> {
         let mut con = self.connect().await?;
-        match redis::cmd("FLUSHALL")
-            .query_async::<Connection, ()>(&mut con)
-            .await
-        {
-            Ok(_) => {}
-            Err(e) => return Err(format!("RedisStream FLUSHALL Error: {}", e)),
+        let key_list: Vec<String> = match con.keys(format!("{}--*", self.mq_prefix)).await {
+            Ok(key_list) => key_list,
+            Err(e) => return Err(format!("RedisStream KEYS Error: {}", e)),
+        };
+        if !key_list.is_empty() {
+            match con.del::<&[String], ()>(&key_list).await {
+                Ok(_) => {}
+                Err(e) => return Err(format!("RedisStream DEL Error: {}", e)),
+            };
         }
         let mut users: Vec<String> = match con.acl_users().await {
             Ok(users) => users,
@@ -129,7 +146,7 @@ impl crate::mq::common::MQ for RedisStream {
             Err(e) => return Err(format!("URI Parse Error: {}", e)),
         };
         let user_name = user_uri.username();
-        let queue_name = format!("{}:{}", user_name, queue_name);
+        let queue_name = format!("{}--{}:{}", self.mq_prefix, user_name, queue_name);
         match con
             .xgroup_create_mkstream::<&str, &str, &str, ()>(&queue_name, &queue_name, "$")
             .await
