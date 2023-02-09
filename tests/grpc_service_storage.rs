@@ -62,11 +62,26 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
     if std::fs::metadata("host_token.txt").is_ok() {
         std::fs::remove_file("host_token.txt")?;
     }
+    let (mq_uri, mq_api) = if std::env::var("COLINK_SERVER_MQ_URI").is_ok() {
+        (
+            Some(std::env::var("COLINK_SERVER_MQ_URI").unwrap()),
+            if std::env::var("COLINK_SERVER_MQ_API").is_ok() {
+                Some(std::env::var("COLINK_SERVER_MQ_API").unwrap())
+            } else {
+                None
+            },
+        )
+    } else {
+        (
+            Some("amqp://guest:guest@localhost:5672".to_string()),
+            Some("http://guest:guest@localhost:15672/api".to_string()),
+        )
+    };
     tokio::spawn(init_and_run_server(
         "127.0.0.1".to_string(),
         12300,
-        "amqp://guest:guest@localhost:5672".to_string(),
-        "http://guest:guest@localhost:15672/api".to_string(),
+        mq_uri,
+        mq_api,
         "colink-test".to_string(),
         None,
         None,

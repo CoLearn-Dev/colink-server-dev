@@ -1,4 +1,4 @@
-use super::utils::{download_tgz, fetch_from_git};
+use super::utils::{download_tgz, fetch_from_git, get_colink_home};
 use crate::colink_proto::*;
 use fs4::FileExt;
 use prost::Message;
@@ -43,7 +43,10 @@ impl crate::server::MyService {
             return Err(Status::invalid_argument("protocol_name is invalid."));
         }
         // create protocols directory if not exist
-        let colink_home = self.get_colink_home()?;
+        let colink_home = match get_colink_home() {
+            Ok(colink_home) => colink_home,
+            Err(e) => return Err(Status::not_found(e)),
+        };
         if !Path::new(&colink_home).join("protocols").exists() {
             match std::fs::create_dir_all(Path::new(&colink_home).join("protocols")) {
                 Ok(_) => {}
@@ -244,7 +247,10 @@ impl crate::server::MyService {
             .await?;
         let protocol_name = String::from_utf8(protocol_name).unwrap();
         let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
-        let colink_home = self.get_colink_home()?;
+        let colink_home = match get_colink_home() {
+            Ok(colink_home) => colink_home,
+            Err(e) => return Err(Status::not_found(e)),
+        };
         let protocol_package_lock = get_file_lock(&colink_home, &protocol_name)?;
         let protocol_package_lock = tokio::task::spawn_blocking(move || {
             protocol_package_lock.lock_exclusive().unwrap();

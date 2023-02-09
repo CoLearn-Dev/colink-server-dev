@@ -12,12 +12,24 @@ jobs:
     defaults:
       run:
         shell: bash
+    strategy:
+      matrix:
+        mq: [rabbitmq, redis]
+        include:
+          - mq: rabbitmq
+            docker_image: "rabbitmq:3.8-management"
+            mq_uri: "amqp://guest:guest@localhost"
+            mq_api: "http://guest:guest@localhost:15672/api"
+          - mq: redis
+            docker_image: "redis"
+            mq_uri: "redis://localhost"
     services:
-      rabbitmq:
-        image: rabbitmq:3.8-management
+      mq:
+        image: ${{ matrix.docker_image }}
         ports:
-          - 5672:5672      
-          - 15672:15672
+          - 5672:5672   # rabbitmq
+          - 15672:15672 # rabbitmq
+          - 6379:6379   # redis          
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -36,4 +48,7 @@ jobs:
       - name: Clippy test
         run: cargo clippy --profile test -- -D warnings -D clippy::dbg_macro
       - name: Run tests
+        env:
+          COLINK_SERVER_MQ_URI: ${{ matrix.mq_uri }}
+          COLINK_SERVER_MQ_API: ${{ matrix.mq_api }}
         run: cargo test

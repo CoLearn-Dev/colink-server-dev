@@ -1,9 +1,10 @@
 use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
-use crate::mq::{common::MQ, rabbitmq::RabbitMQ};
+use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
+use crate::utils::{start_redis_server, RedisServer};
 use secp256k1::Secp256k1;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
@@ -23,7 +24,7 @@ use tracing::error;
 pub struct MyService {
     pub storage: Box<dyn StorageWithSubscription>,
     pub jwt_secret: [u8; 32],
-    pub mq: Box<dyn MQ>,
+    pub mq: Arc<dyn MQ>,
     pub imported_users: RwLock<HashSet<String>>,
     // We use this mutex to avoid the TOCTOU race condition in task storage.
     pub task_storage_mutex: Mutex<i32>,
@@ -167,8 +168,8 @@ impl CoLink for GrpcService {
 pub async fn init_and_run_server(
     address: String,
     port: u16,
-    mq_amqp: String,
-    mq_api: String,
+    mq_uri: Option<String>,
+    mq_api: Option<String>,
     mq_prefix: String,
     core_uri: Option<String>,
     cert: Option<PathBuf>,
@@ -181,10 +182,22 @@ pub async fn init_and_run_server(
     force_gen_core_cert: bool,
     inter_core_reverse_mode: bool,
 ) {
+    let (mq_uri, _redis_server) = if mq_uri.is_none() {
+        let (redis_server, uri) = match start_redis_server().await {
+            Ok(res) => res,
+            Err(e) => {
+                error!("{}", e);
+                std::process::exit(1);
+            }
+        };
+        (uri, redis_server)
+    } else {
+        (mq_uri.unwrap(), RedisServer { process: None })
+    };
     let socket_address = format!("{}:{}", address, port).parse().unwrap();
     match run_server(
         socket_address,
-        mq_amqp,
+        mq_uri,
         mq_api,
         mq_prefix,
         core_uri,
@@ -211,8 +224,8 @@ pub async fn init_and_run_server(
 #[allow(clippy::too_many_arguments)]
 async fn run_server(
     socket_address: SocketAddr,
-    mq_amqp: String,
-    mq_api: String,
+    mq_uri: String,
+    mq_api: Option<String>,
     mq_prefix: String,
     core_uri: Option<String>,
     cert: Option<PathBuf>,
@@ -250,13 +263,22 @@ async fn run_server(
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let host_id = hex::encode(core_public_key.serialize());
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
+    let uri_parsed = url::Url::parse(&mq_uri)?;
+    let mq: Arc<dyn MQ> = if uri_parsed.scheme().starts_with("redis") {
+        Arc::new(RedisStream::new(&mq_uri, &mq_prefix))
+    } else {
+        if mq_api.is_none() {
+            Err("--mq-api <MQ_API> must be provided.")?;
+        }
+        Arc::new(RabbitMQ::new(&mq_uri, &mq_api.unwrap(), &mq_prefix))
+    };
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
             Box::<BasicStorage>::default(),
-            Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
+            mq.clone(),
         )),
         jwt_secret,
-        mq: Box::new(RabbitMQ::new(&mq_amqp, &mq_api, &mq_prefix)),
+        mq: mq.clone(),
         imported_users: RwLock::new(HashSet::new()),
         task_storage_mutex: Mutex::new(0),
         secret_key: core_secret_key,
@@ -277,7 +299,7 @@ async fn run_server(
             &inter_core_key.as_path().display().to_string(),
         );
     }
-    service.mq.delete_all_accounts().await?;
+    mq.delete_all_accounts().await?;
     let grpc_service = GrpcService {
         service: Arc::new(service),
     };
