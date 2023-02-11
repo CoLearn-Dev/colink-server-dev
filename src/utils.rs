@@ -32,12 +32,25 @@ pub async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::
     let redis_home = Path::new(&colink_home).join("redis-server");
     let program = Path::new(&redis_home).join("redis-server");
     if std::fs::metadata(program.clone()).is_err() {
-        download_tgz(
-            "https://github.com/CoLearn-Dev/redis-static-binaries/releases/download/7.0.8/redis-server.tar.gz",
-            "a28519717820c8af1d7d2371eeb17feb2abb4d70651f1a975b57977f9be7aacc",
-            redis_home.to_str().unwrap(),
-        )
-        .await?;
+        let base_url = "https://github.com/CoLearn-Dev/redis-binaries/releases/download/7.0.8";
+        let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let (url, sha256) = match platform.as_str() {
+            "linux-x86_64" => (
+                format!("{}/redis-server-{}.tar.gz", base_url, platform),
+                "5575cf43f41ef1bc9915667ca42822836e1c8f89f8bf338c2a9942617ba83714",
+            ),
+            "macos-x86_64" => (
+                format!("{}/redis-server-{}.tar.gz", base_url, platform),
+                "97c23a254283c259b764ad42ddd83eef4e138dbde057c7b862290bb283938a3b",
+            ),
+            _ => {
+                return Err(format!(
+                    "Cannot find the redis-server binary for platform {}.",
+                    platform
+                ))?;
+            }
+        };
+        download_tgz(&url, sha256, redis_home.to_str().unwrap()).await?;
     }
     let process = Command::new(program)
         .args([
