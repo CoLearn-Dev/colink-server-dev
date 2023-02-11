@@ -5,36 +5,21 @@ on:
 name: Build
 
 jobs:
-  linux-x86_64:
-    runs-on: ubuntu-20.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-      - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-gnu
-      - name: Pack
-        run: |
-          cp target/x86_64-unknown-linux-gnu/release/colink-server ./
-          tar -zcvf colink-server-linux-x86_64.tar.gz colink-server README.md user_init_config.template.toml
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: colink-server-linux-x86_64.tar.gz
-          asset_name: colink-server-linux-x86_64.tar.gz
-          asset_content_type: application/tar+gzip
-  
-  linux-x86_64-musl:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        platform: [linux-x86_64, linux-x86_64-musl, macos-x86_64]
+        include:
+          - platform: linux-x86_64
+            ci_image: ubuntu-20.04
+            cargo_target: x86_64-unknown-linux-gnu
+          - platform: linux-x86_64-musl
+            ci_image: ubuntu-latest
+            cargo_target: x86_64-unknown-linux-musl
+          - platform: macos-x86_64
+            ci_image: macos-12
+            cargo_target: x86_64-apple-darwin
+    runs-on: ${{ matrix.ci_image }}
     defaults:
       run:
         shell: bash
@@ -46,21 +31,25 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          target: x86_64-unknown-linux-musl
+          target: ${{ matrix.cargo_target }}
+      - name: Install musl
+        if: ${{ endsWith(matrix.cargo_target, 'musl') }}
+        run: sudo apt update && sudo apt install musl-tools
       - name: Build
-        run: |
-          sudo apt update && sudo apt install musl-tools
-          cargo build --release --target x86_64-unknown-linux-musl
+        run: cargo build --release --target ${{ matrix.cargo_target }}
       - name: Pack
         run: |
-          cp target/x86_64-unknown-linux-musl/release/colink-server ./
-          tar -zcvf colink-server-linux-x86_64-musl.tar.gz colink-server README.md user_init_config.template.toml
+          cp target/${{ matrix.cargo_target }}/release/colink-server ./
+          tar -zcvf colink-server-${{ matrix.platform }}.tar.gz colink-server README.md user_init_config.template.toml
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v6
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: colink-server-linux-x86_64-musl.tar.gz
-          asset_name: colink-server-linux-x86_64-musl.tar.gz
-          asset_content_type: application/tar+gzip
+          script: |
+            const fs = require('fs').promises;
+            github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ github.event.release.id }},
+              name: 'colink-server-${{ matrix.platform }}.tar.gz',
+              data: await fs.readFile('colink-server-${{ matrix.platform }}.tar.gz')
+            });

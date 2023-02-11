@@ -29,7 +29,7 @@ jobs:
         ports:
           - 5672:5672   # rabbitmq
           - 15672:15672 # rabbitmq
-          - 6379:6379   # redis          
+          - 6379:6379   # redis
     steps:
       - name: Checkout
         uses: actions/checkout@v3

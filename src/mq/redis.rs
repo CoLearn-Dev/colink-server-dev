@@ -32,6 +32,7 @@ impl crate::mq::common::MQ for RedisStream {
             .lowercase_letters(true)
             .uppercase_letters(true);
         let username = ug.generate_one().unwrap();
+        let username = format!("{}--{}", self.mq_prefix, username);
         let password = pg.generate_one().unwrap();
         let admin_uri = match url::Url::parse(&self.redis_uri) {
             Ok(admin_uri) => admin_uri,
@@ -61,7 +62,7 @@ impl crate::mq::common::MQ for RedisStream {
                 &[
                     Rule::On,
                     Rule::AddPass(password.to_owned()),
-                    Rule::Pattern(format!("{}--{}:*", self.mq_prefix, username).to_owned()),
+                    Rule::Pattern(format!("{}:*", username).to_owned()),
                     Rule::AddCategory("stream".to_owned()),
                 ],
             )
@@ -80,10 +81,7 @@ impl crate::mq::common::MQ for RedisStream {
         };
         let user_name = user_uri.username();
         let mut con = self.connect().await?;
-        let key_list: Vec<String> = match con
-            .keys(format!("{}--{}:*", self.mq_prefix, user_name))
-            .await
-        {
+        let key_list: Vec<String> = match con.keys(format!("{}:*", user_name)).await {
             Ok(key_list) => key_list,
             Err(e) => return Err(format!("RedisStream KEYS Error: {}", e)),
         };
@@ -120,7 +118,7 @@ impl crate::mq::common::MQ for RedisStream {
             Ok(user_name) => user_name,
             Err(e) => return Err(format!("RedisStream ACL WHOAMI Error: {}", e)),
         };
-        users.retain(|x| x != &my_user_name);
+        users.retain(|x| x != &my_user_name && x.starts_with(&format!("{}--", self.mq_prefix)));
         if !users.is_empty() {
             match con.acl_deluser::<String, ()>(&users).await {
                 Ok(_) => {}
@@ -147,7 +145,7 @@ impl crate::mq::common::MQ for RedisStream {
             Err(e) => return Err(format!("URI Parse Error: {}", e)),
         };
         let user_name = user_uri.username();
-        let queue_name = format!("{}--{}:{}", self.mq_prefix, user_name, queue_name);
+        let queue_name = format!("{}:{}", user_name, queue_name);
         match con
             .xgroup_create_mkstream::<&str, &str, &str, ()>(&queue_name, &queue_name, "$")
             .await
