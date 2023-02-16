@@ -334,35 +334,6 @@ impl crate::server::MyService {
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 
-    async fn forward_inter_core_sync_task(
-        &self,
-        user_id: &str,
-        target_user_id: &str,
-        task: &Task,
-    ) -> Result<(), Status> {
-        if self
-            .inter_core_reverse_senders
-            .lock()
-            .await
-            .contains_key(&(user_id.to_string(), target_user_id.to_string()))
-        {
-            let inter_core_reverse_senders = self.inter_core_reverse_senders.lock().await;
-            let tx = inter_core_reverse_senders
-                .get(&(user_id.to_string(), target_user_id.to_string()))
-                .unwrap();
-            match tx.send(Ok(task.clone())).await {
-                Ok(_) => {}
-                Err(e) => return Err(Status::internal(format!("{}", e))),
-            }
-            Ok(())
-        } else {
-            Err(Status::failed_precondition(format!(
-                "cannot locate target {}.",
-                target_user_id
-            )))
-        }
-    }
-
     async fn send_inter_core_sync_task(
         &self,
         user_id: &str,
@@ -477,6 +448,35 @@ impl crate::server::MyService {
         inter_core_reverse_handlers
             .insert((user_id.to_string(), target_user_id.to_string()), handler);
         Ok(())
+    }
+
+    async fn forward_inter_core_sync_task(
+        &self,
+        user_id: &str,
+        target_user_id: &str,
+        task: &Task,
+    ) -> Result<(), Status> {
+        if self
+            .inter_core_reverse_senders
+            .lock()
+            .await
+            .contains_key(&(user_id.to_string(), target_user_id.to_string()))
+        {
+            let inter_core_reverse_senders = self.inter_core_reverse_senders.lock().await;
+            let tx = inter_core_reverse_senders
+                .get(&(user_id.to_string(), target_user_id.to_string()))
+                .unwrap();
+            match tx.send(Ok(task.clone())).await {
+                Ok(_) => {}
+                Err(e) => return Err(Status::internal(format!("{}", e))),
+            }
+            Ok(())
+        } else {
+            Err(Status::failed_precondition(format!(
+                "cannot locate target {}.",
+                target_user_id
+            )))
+        }
     }
 
     async fn remove_task_from_list_in_storage(
