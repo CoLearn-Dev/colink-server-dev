@@ -362,7 +362,7 @@ impl crate::server::MyService {
                     self.query_user_record(user_id, &forwarding_user_id).await?;
                 if _forwarding_user_id.is_some() {
                     return Err(Status::failed_precondition(format!(
-                        "cannot connect to forwarding server {}.",
+                        "Unable to connect to forwarding user {}.",
                         forwarding_user_id
                     )));
                 }
@@ -473,7 +473,7 @@ impl crate::server::MyService {
             Ok(())
         } else {
             Err(Status::failed_precondition(format!(
-                "cannot locate target {}.",
+                "Unable to locate target {}.",
                 target_user_id
             )))
         }
