@@ -358,11 +358,11 @@ impl crate::server::MyService {
             let (core_addr, guest_jwt, forwarding_user_id) =
                 self.query_user_record(user_id, target_user_id).await?;
             if let Some(forwarding_user_id) = forwarding_user_id {
-                let (core_addr, guest_jwt, _forwarding_user_id) =
+                let (core_addr, guest_jwt, double_forwarding_user_id) =
                     self.query_user_record(user_id, &forwarding_user_id).await?;
-                if _forwarding_user_id.is_some() {
+                if double_forwarding_user_id.is_some() {
                     return Err(Status::failed_precondition(format!(
-                        "Unable to connect to forwarding user {}.",
+                        "Double forwarding is not allowed (checking user {}).",
                         forwarding_user_id
                     )));
                 }
