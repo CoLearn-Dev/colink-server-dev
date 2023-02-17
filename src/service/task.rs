@@ -190,6 +190,19 @@ impl crate::server::MyService {
         self.check_privilege_in(request.metadata(), &["user", "guest"])
             .await?;
         let user_id = Self::get_key_from_metadata(request.metadata(), "user_id");
+        if request.metadata().get("forwarding-target").is_some() {
+            let forwarding_target = request
+                .metadata()
+                .get("forwarding-target")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            let task = request.into_inner();
+            self.forward_inter_core_sync_task(&user_id, &forwarding_target, &task)
+                .await?;
+            return Ok(Response::new(Empty::default()));
+        }
         if !self
             ._internal_storage_contains(&user_id, &format!("tasks:{}", request.get_ref().task_id))
             .await?
@@ -342,14 +355,36 @@ impl crate::server::MyService {
                 Err(e) => return Err(Status::internal(format!("{}", e))),
             }
         } else {
-            let (core_addr, guest_jwt) = self.query_user_record(user_id, target_user_id).await?;
-            let mut client = match self._grpc_connect(&core_addr).await {
-                Ok(client) => client,
-                Err(e) => return Err(Status::internal(format!("{}", e))),
-            };
-            client
-                .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
-                .await?;
+            let (core_addr, guest_jwt, forwarding_user_id) =
+                self.query_user_record(user_id, target_user_id).await?;
+            if let Some(forwarding_user_id) = forwarding_user_id {
+                let (core_addr, guest_jwt, double_forwarding_user_id) =
+                    self.query_user_record(user_id, &forwarding_user_id).await?;
+                if double_forwarding_user_id.is_some() {
+                    return Err(Status::failed_precondition(format!(
+                        "Double forwarding is not allowed (checking user {}).",
+                        forwarding_user_id
+                    )));
+                }
+                let mut client = match self._grpc_connect(&core_addr).await {
+                    Ok(client) => client,
+                    Err(e) => return Err(Status::internal(format!("{}", e))),
+                };
+                let mut request = generate_request(&guest_jwt, task.clone());
+                request.metadata_mut().insert(
+                    "forwarding-target",
+                    tonic::metadata::MetadataValue::try_from(target_user_id).unwrap(),
+                );
+                client.inter_core_sync_task(request).await?;
+            } else {
+                let mut client = match self._grpc_connect(&core_addr).await {
+                    Ok(client) => client,
+                    Err(e) => return Err(Status::internal(format!("{}", e))),
+                };
+                client
+                    .inter_core_sync_task(generate_request(&guest_jwt, task.clone()))
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -361,7 +396,13 @@ impl crate::server::MyService {
         task: &Task,
         service: Arc<MyService>,
     ) -> Result<(), Status> {
-        let (core_addr, guest_jwt) = self.query_user_record(user_id, target_user_id).await?;
+        let (core_addr, guest_jwt, forwarding_user_id) =
+            self.query_user_record(user_id, target_user_id).await?;
+        if forwarding_user_id.is_some() {
+            return self
+                .send_inter_core_sync_task(user_id, target_user_id, task)
+                .await;
+        }
         let mut client = match self._grpc_connect(&core_addr).await {
             Ok(client) => client,
             Err(e) => return Err(Status::internal(format!("{}", e))),
@@ -407,6 +448,35 @@ impl crate::server::MyService {
         inter_core_reverse_handlers
             .insert((user_id.to_string(), target_user_id.to_string()), handler);
         Ok(())
+    }
+
+    async fn forward_inter_core_sync_task(
+        &self,
+        user_id: &str,
+        target_user_id: &str,
+        task: &Task,
+    ) -> Result<(), Status> {
+        if self
+            .inter_core_reverse_senders
+            .lock()
+            .await
+            .contains_key(&(user_id.to_string(), target_user_id.to_string()))
+        {
+            let inter_core_reverse_senders = self.inter_core_reverse_senders.lock().await;
+            let tx = inter_core_reverse_senders
+                .get(&(user_id.to_string(), target_user_id.to_string()))
+                .unwrap();
+            match tx.send(Ok(task.clone())).await {
+                Ok(_) => {}
+                Err(e) => return Err(Status::internal(format!("{}", e))),
+            }
+            Ok(())
+        } else {
+            Err(Status::failed_precondition(format!(
+                "Unable to locate target {}.",
+                target_user_id
+            )))
+        }
     }
 
     async fn remove_task_from_list_in_storage(
@@ -518,7 +588,7 @@ impl crate::server::MyService {
         &self,
         user_id: &str,
         query_user_id: &str,
-    ) -> Result<(String, String), Status> {
+    ) -> Result<(String, String, Option<String>), Status> {
         let mut counter = 0;
         while self
             ._internal_storage_read(
@@ -594,7 +664,17 @@ impl crate::server::MyService {
             )
             .await?;
         let guest_jwt = String::from_utf8(guest_jwt).unwrap();
-        Ok((core_addr, guest_jwt))
+        let forwarding_user_id = match self
+            ._internal_storage_read(
+                user_id,
+                &format!("known_users:{}:forwarding_user_id", &query_user_id),
+            )
+            .await
+        {
+            Ok(forwarding_user_id) => Some(String::from_utf8(forwarding_user_id).unwrap()),
+            Err(_) => None,
+        };
+        Ok((core_addr, guest_jwt, forwarding_user_id))
     }
 
     /**
