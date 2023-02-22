@@ -7,11 +7,16 @@ use std::path::PathBuf;
 struct CommandLineArgs {
     /// Address of CoLink server
     // short and long flags (-d, --debug) will be deduced from the field's name
-    #[arg(short, long, env = "COLINK_SERVER_ADDRESS")]
+    #[arg(
+        short,
+        long,
+        env = "COLINK_SERVER_ADDRESS",
+        default_value = "127.0.0.1"
+    )]
     address: String,
 
     /// Port of CoLink server
-    #[arg(short, long, env = "COLINK_SERVER_PORT")]
+    #[arg(short, long, env = "COLINK_SERVER_PORT", default_value = "2021")]
     port: u16,
 
     /// URI of MQ (AMQP or Redis)
@@ -27,7 +32,11 @@ struct CommandLineArgs {
     mq_prefix: String,
 
     /// URI of CoLink server
-    #[arg(long, env = "COLINK_SERVER_CORE_URI")]
+    #[arg(
+        long,
+        env = "COLINK_SERVER_CORE_URI",
+        default_value = "http://127.0.0.1:2021"
+    )]
     core_uri: Option<String>,
 
     /// Path to server certificate.
