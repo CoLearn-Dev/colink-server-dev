@@ -8,7 +8,7 @@ value = "true"
 operator_num = 1
 
 [registry]
-operator_num = 1
+operator_num = 0    # Disabled by default. If you wanted to connect to others, change it to 1.
 start_after = [ "policy_module", "remote_storage" ]
 [[registry.create_entry]]
 key_name = "_registry:init:default_registry_addr"
