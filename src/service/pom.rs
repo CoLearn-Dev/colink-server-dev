@@ -153,10 +153,10 @@ impl crate::server::MyService {
                 }
             }
             // start instance
-            let xid = if entrypoint.is_some() {
+            let xid = if let Some(entrypoint) = entrypoint {
                 let process = match Command::new("bash")
                     .arg("-c")
-                    .arg(entrypoint.unwrap())
+                    .arg(entrypoint)
                     .current_dir(&protocol_package_dir)
                     .env("COLINK_CORE_ADDR", core_addr)
                     .env("COLINK_JWT", user_jwt)
@@ -167,9 +167,8 @@ impl crate::server::MyService {
                     Ok(child) => child,
                     Err(err) => return Err(Status::internal(err.to_string())),
                 };
-                let pid = process.id().to_string();
-                pid
-            } else if docker_image.is_some() {
+                process.id().to_string()
+            } else if let Some(docker_image) = docker_image {
                 let container_id = match Command::new("docker")
                     .args([
                         "run",
@@ -180,7 +179,7 @@ impl crate::server::MyService {
                         &format!("COLINK_CORE_ADDR={core_addr}"),
                         "-e",
                         &format!("COLINK_JWT={user_jwt}"),
-                        docker_image.unwrap(),
+                        docker_image,
                     ])
                     .current_dir(&protocol_package_dir)
                     .output()
@@ -442,50 +441,48 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    if inventory_toml.get("docker").is_some() {
-        if inventory_toml["docker"].get("image").is_some() {
-            if let Some(source) = inventory_toml["docker"]["image"].as_table() {
-                if source.get("name").is_some()
-                    && source["name"].as_str().is_some()
-                    && source.get("digest").is_some()
-                    && source["digest"].as_str().is_some()
+    if inventory_toml.get("docker").is_some() && inventory_toml["docker"].get("image").is_some() {
+        if let Some(source) = inventory_toml["docker"]["image"].as_table() {
+            if source.get("name").is_some()
+                && source["name"].as_str().is_some()
+                && source.get("digest").is_some()
+                && source["digest"].as_str().is_some()
+            {
+                let mut file = match tokio::fs::File::create(
+                    &Path::new(&protocol_package_dir).join("colink.toml"),
+                )
+                .await
                 {
-                    let mut file = match tokio::fs::File::create(
-                        &Path::new(&protocol_package_dir).join("colink.toml"),
+                    Ok(file) => file,
+                    Err(_) => {
+                        return Err(format!(
+                            "fail to create colink.toml file for {}@{}",
+                            source["name"].as_str().unwrap(),
+                            source["digest"].as_str().unwrap()
+                        ))
+                    }
+                };
+                match file
+                    .write_all(
+                        format!(
+                            "[package]\nname = \"{}@{}\"",
+                            source["name"].as_str().unwrap(),
+                            source["digest"].as_str().unwrap()
+                        )
+                        .as_bytes(),
                     )
                     .await
-                    {
-                        Ok(file) => file,
-                        Err(_) => {
-                            return Err(format!(
-                                "fail to create colink.toml file for {}@{}",
-                                source["name"].as_str().unwrap(),
-                                source["digest"].as_str().unwrap()
-                            ))
-                        }
-                    };
-                    match file
-                        .write_all(
-                            format!(
-                                "[package]\nname = \"{}@{}\"",
-                                source["name"].as_str().unwrap(),
-                                source["digest"].as_str().unwrap()
-                            )
-                            .as_bytes(),
-                        )
-                        .await
-                    {
-                        Ok(_) => {}
-                        Err(_) => {
-                            return Err(format!(
-                                "fail to write colink.toml file for {}@{}",
-                                source["name"].as_str().unwrap(),
-                                source["digest"].as_str().unwrap()
-                            ))
-                        }
+                {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(format!(
+                            "fail to write colink.toml file for {}@{}",
+                            source["name"].as_str().unwrap(),
+                            source["digest"].as_str().unwrap()
+                        ))
                     }
-                    return Ok(());
                 }
+                return Ok(());
             }
         }
     }
