@@ -7,6 +7,7 @@ use std::{
     path::Path,
     process::{Command, Stdio},
 };
+use tokio::io::AsyncWriteExt;
 use toml::Value;
 use tonic::{Request, Response, Status};
 use tracing::error;
@@ -119,10 +120,10 @@ impl crate::server::MyService {
                 return Err(Status::not_found("entrypoint not found."));
             }
             let entrypoint = colink_toml["package"]["entrypoint"].as_str();
-            if entrypoint.is_none() {
+            let docker_image = colink_toml["package"]["docker_image"].as_str();
+            if entrypoint.is_none() && docker_image.is_none() {
                 return Err(Status::not_found("entrypoint not found."));
             }
-            let entrypoint = entrypoint.unwrap();
             // install dependencies
             if colink_toml["package"].get("install_script").is_some() {
                 let install_script = colink_toml["package"]["install_script"].as_str();
@@ -152,20 +153,45 @@ impl crate::server::MyService {
                 }
             }
             // start instance
-            let process = match Command::new("bash")
-                .arg("-c")
-                .arg(entrypoint)
-                .current_dir(&protocol_package_dir)
-                .env("COLINK_CORE_ADDR", core_addr)
-                .env("COLINK_JWT", user_jwt)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-            {
-                Ok(child) => child,
-                Err(err) => return Err(Status::internal(err.to_string())),
+            let xid = if entrypoint.is_some() {
+                let process = match Command::new("bash")
+                    .arg("-c")
+                    .arg(entrypoint.unwrap())
+                    .current_dir(&protocol_package_dir)
+                    .env("COLINK_CORE_ADDR", core_addr)
+                    .env("COLINK_JWT", user_jwt)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
+                    Ok(child) => child,
+                    Err(err) => return Err(Status::internal(err.to_string())),
+                };
+                let pid = process.id().to_string();
+                pid
+            } else if docker_image.is_some() {
+                let container_id = match Command::new("docker")
+                    .args([
+                        "run",
+                        "-dit",
+                        "--rm",
+                        "--net=host",
+                        "-e",
+                        &format!("COLINK_CORE_ADDR={core_addr}"),
+                        "-e",
+                        &format!("COLINK_JWT={user_jwt}"),
+                        docker_image.unwrap(),
+                    ])
+                    .current_dir(&protocol_package_dir)
+                    .output()
+                {
+                    Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+                    Err(err) => return Err(Status::internal(err.to_string())),
+                };
+                container_id
+            } else {
+                unreachable!()
             };
-            let pid = process.id().to_string();
             // update instance information in host storage
             self._host_storage_update(
                 &format!("protocol_operator_instances:{}:user_id", instance_id),
@@ -173,8 +199,18 @@ impl crate::server::MyService {
             )
             .await?;
             self._host_storage_update(
-                &format!("protocol_operator_instances:{}:pid", instance_id),
-                pid.as_bytes(),
+                &format!(
+                    "protocol_operator_instances:{}:{}",
+                    instance_id,
+                    if entrypoint.is_some() {
+                        "pid"
+                    } else if docker_image.is_some() {
+                        "container_id"
+                    } else {
+                        unreachable!()
+                    }
+                ),
+                xid.as_bytes(),
             )
             .await?;
             self._host_storage_update(
@@ -226,18 +262,52 @@ impl crate::server::MyService {
                 "protocol_operator_instances:{}:pid",
                 request.get_ref().instance_id
             ))
-            .await?;
-        let pid = String::from_utf8(pid).unwrap();
-        // kill the instance
-        match Command::new("kill").args(["-9", &pid]).output() {
-            Ok(output) => {
-                if !output.status.success() {
-                    error!("cannot kill the instance: {:?}", output.stderr);
-                    return Err(Status::internal("cannot kill the instance".to_string()));
+            .await;
+        if let Ok(pid) = pid {
+            let pid = String::from_utf8(pid).unwrap();
+            // kill child process
+            match Command::new("pkill").args(["-9", "-P", &pid]).output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("cannot kill the child process: {:?}", output.stderr);
+                        return Err(Status::internal(
+                            "cannot kill the child process".to_string(),
+                        ));
+                    }
                 }
-            }
-            Err(err) => return Err(Status::internal(err.to_string())),
-        };
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+            // kill process
+            match Command::new("kill").args(["-9", &pid]).output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("cannot kill the process: {:?}", output.stderr);
+                        return Err(Status::internal("cannot kill the process".to_string()));
+                    }
+                }
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+        } else if let Ok(container_id) = self
+            ._host_storage_read(&format!(
+                "protocol_operator_instances:{}:pid",
+                request.get_ref().instance_id
+            ))
+            .await
+        {
+            let cid = String::from_utf8(container_id).unwrap();
+            // kill container
+            match Command::new("docker").args(["kill", &cid]).output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("cannot kill the container: {:?}", output.stderr);
+                        return Err(Status::internal("cannot kill the container".to_string()));
+                    }
+                }
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+        } else {
+            pid?;
+        }
         // update running instances in user storage
         let protocol_name = self
             ._host_storage_read(&format!(
@@ -367,6 +437,53 @@ async fn fetch_protocol_from_inventory(
                         protocol_package_dir.to_str().unwrap(),
                     )
                     .await?;
+                    return Ok(());
+                }
+            }
+        }
+    }
+    if inventory_toml.get("docker").is_some() {
+        if inventory_toml["docker"].get("image").is_some() {
+            if let Some(source) = inventory_toml["docker"]["image"].as_table() {
+                if source.get("name").is_some()
+                    && source["name"].as_str().is_some()
+                    && source.get("digest").is_some()
+                    && source["digest"].as_str().is_some()
+                {
+                    let mut file = match tokio::fs::File::create(
+                        &Path::new(&protocol_package_dir).join("colink.toml"),
+                    )
+                    .await
+                    {
+                        Ok(file) => file,
+                        Err(_) => {
+                            return Err(format!(
+                                "fail to create colink.toml file for {}@{}",
+                                source["name"].as_str().unwrap(),
+                                source["digest"].as_str().unwrap()
+                            ))
+                        }
+                    };
+                    match file
+                        .write_all(
+                            format!(
+                                "[package]\nname = \"{}@{}\"",
+                                source["name"].as_str().unwrap(),
+                                source["digest"].as_str().unwrap()
+                            )
+                            .as_bytes(),
+                        )
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(_) => {
+                            return Err(format!(
+                                "fail to write colink.toml file for {}@{}",
+                                source["name"].as_str().unwrap(),
+                                source["digest"].as_str().unwrap()
+                            ))
+                        }
+                    }
                     return Ok(());
                 }
             }
