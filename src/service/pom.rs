@@ -100,7 +100,7 @@ impl crate::server::MyService {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(Status::not_found(format!(
-                            "protocol {} not found from inventory: {}",
+                            "fail to fetch protocol {} from inventory: {}",
                             protocol_name, err
                         )));
                     }
@@ -114,15 +114,21 @@ impl crate::server::MyService {
                 Ok(toml) => toml,
                 Err(err) => return Err(Status::internal(err.to_string())),
             };
-            if colink_toml.get("package").is_none()
-                || colink_toml["package"].get("entrypoint").is_none()
-            {
-                return Err(Status::not_found("entrypoint not found."));
+            if colink_toml.get("package").is_none() {
+                return Err(Status::not_found("package not found."));
             }
-            let entrypoint = colink_toml["package"]["entrypoint"].as_str();
-            let docker_image = colink_toml["package"]["docker_image"].as_str();
+            let entrypoint = if let Some(value) = colink_toml["package"].get("entrypoint") {
+                value.as_str()
+            } else {
+                None
+            };
+            let docker_image = if let Some(value) = colink_toml["package"].get("docker_image") {
+                value.as_str()
+            } else {
+                None
+            };
             if entrypoint.is_none() && docker_image.is_none() {
-                return Err(Status::not_found("entrypoint not found."));
+                return Err(Status::not_found("entrypoint or docker_image not found."));
             }
             // install dependencies
             if colink_toml["package"].get("install_script").is_some() {
@@ -448,6 +454,16 @@ async fn fetch_protocol_from_inventory(
                 && source.get("digest").is_some()
                 && source["digest"].as_str().is_some()
             {
+                match tokio::fs::create_dir_all(&protocol_package_dir).await {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(format!(
+                            "fail to create protocol_package_dir for {}@{}",
+                            source["name"].as_str().unwrap(),
+                            source["digest"].as_str().unwrap()
+                        ))
+                    }
+                }
                 let mut file = match tokio::fs::File::create(
                     &Path::new(&protocol_package_dir).join("colink.toml"),
                 )
@@ -465,7 +481,7 @@ async fn fetch_protocol_from_inventory(
                 match file
                     .write_all(
                         format!(
-                            "[package]\nname = \"{}@{}\"",
+                            "[package]\ndocker_image = \"{}@{}\"\n",
                             source["name"].as_str().unwrap(),
                             source["digest"].as_str().unwrap()
                         )
