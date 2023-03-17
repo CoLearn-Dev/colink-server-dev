@@ -193,7 +193,7 @@ impl crate::server::MyService {
                     Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
                     Err(err) => return Err(Status::internal(err.to_string())),
                 };
-                container_id
+                container_id.replace(|c: char| !c.is_ascii_alphanumeric(), "")
             } else {
                 unreachable!()
             };
@@ -271,17 +271,7 @@ impl crate::server::MyService {
         if let Ok(pid) = pid {
             let pid = String::from_utf8(pid).unwrap();
             // kill child process
-            match Command::new("pkill").args(["-9", "-P", &pid]).output() {
-                Ok(output) => {
-                    if !output.status.success() {
-                        error!("cannot kill the child process: {:?}", output.stderr);
-                        return Err(Status::internal(
-                            "cannot kill the child process".to_string(),
-                        ));
-                    }
-                }
-                Err(err) => return Err(Status::internal(err.to_string())),
-            };
+            let _ = Command::new("pkill").args(["-9", "-P", &pid]).output();
             // kill process
             match Command::new("kill").args(["-9", &pid]).output() {
                 Ok(output) => {
@@ -294,7 +284,7 @@ impl crate::server::MyService {
             };
         } else if let Ok(container_id) = self
             ._host_storage_read(&format!(
-                "protocol_operator_instances:{}:pid",
+                "protocol_operator_instances:{}:container_id",
                 request.get_ref().instance_id
             ))
             .await
