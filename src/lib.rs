@@ -7,4 +7,5 @@ pub mod subscription;
 pub mod colink_proto {
     tonic::include_proto!("colink");
 }
+pub mod params;
 pub mod utils;

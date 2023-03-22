@@ -1,6 +1,7 @@
 use crate::colink_proto::co_link_server::{CoLink, CoLinkServer};
 use crate::colink_proto::*;
 use crate::mq::{common::MQ, rabbitmq::RabbitMQ, redis::RedisStream};
+use crate::params::CoLinkServerParams;
 use crate::service::auth::{gen_jwt_secret, print_host_token, CheckAuthInterceptor};
 use crate::storage::basic::BasicStorage;
 use crate::subscription::{common::StorageWithSubscription, mq::StorageWithMQSubscription};
@@ -8,8 +9,6 @@ use crate::utils::{start_redis_server, RedisServer};
 use secp256k1::Secp256k1;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
@@ -32,8 +31,7 @@ pub struct MyService {
     pub secret_key: secp256k1::SecretKey,
     pub inter_core_ca_certificate: Option<Certificate>,
     pub inter_core_identity: Option<Identity>,
-    pub core_uri: Option<String>,
-    pub inter_core_reverse_mode: bool,
+    pub params: CoLinkServerParams,
     pub inter_core_reverse_senders: Mutex<HashMap<(String, String), Sender<Result<Task, Status>>>>,
     pub inter_core_reverse_handlers: Mutex<
         HashMap<
@@ -165,24 +163,8 @@ impl CoLink for GrpcService {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn init_and_run_server(
-    address: String,
-    port: u16,
-    mq_uri: Option<String>,
-    mq_api: Option<String>,
-    mq_prefix: String,
-    core_uri: Option<String>,
-    cert: Option<PathBuf>,
-    key: Option<PathBuf>,
-    ca: Option<PathBuf>,
-    inter_core_ca: Option<PathBuf>,
-    inter_core_cert: Option<PathBuf>,
-    inter_core_key: Option<PathBuf>,
-    force_gen_jwt_secret: bool,
-    force_gen_core_cert: bool,
-    inter_core_reverse_mode: bool,
-) {
-    let (mq_uri, _redis_server) = if mq_uri.is_none() {
+pub async fn init_and_run_server(mut params: CoLinkServerParams) {
+    let _redis_server = if params.mq_uri.is_none() {
         let (redis_server, uri) = match start_redis_server().await {
             Ok(res) => res,
             Err(e) => {
@@ -190,29 +172,12 @@ pub async fn init_and_run_server(
                 std::process::exit(1);
             }
         };
-        (uri, redis_server)
+        params.mq_uri = Some(uri);
+        redis_server
     } else {
-        (mq_uri.unwrap(), RedisServer { process: None })
+        RedisServer { process: None }
     };
-    let socket_address = format!("{}:{}", address, port).parse().unwrap();
-    match run_server(
-        socket_address,
-        mq_uri,
-        mq_api,
-        mq_prefix,
-        core_uri,
-        cert,
-        key,
-        ca,
-        inter_core_ca,
-        inter_core_cert,
-        inter_core_key,
-        force_gen_jwt_secret,
-        force_gen_core_cert,
-        inter_core_reverse_mode,
-    )
-    .await
-    {
+    match run_server(params).await {
         Ok(_) => {}
         Err(e) => {
             error!("{}", e);
@@ -222,29 +187,17 @@ pub async fn init_and_run_server(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_server(
-    socket_address: SocketAddr,
-    mq_uri: String,
-    mq_api: Option<String>,
-    mq_prefix: String,
-    core_uri: Option<String>,
-    cert: Option<PathBuf>,
-    key: Option<PathBuf>,
-    ca: Option<PathBuf>,
-    inter_core_ca: Option<PathBuf>,
-    inter_core_cert: Option<PathBuf>,
-    inter_core_key: Option<PathBuf>,
-    force_gen_jwt_secret: bool,
-    force_gen_priv_key: bool,
-    inter_core_reverse_mode: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error::Error>> {
+    let socket_address = format!("{}:{}", params.address, params.port)
+        .parse()
+        .unwrap();
     std::fs::create_dir_all("init_state")?;
-    if force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret.txt").is_err() {
+    if params.force_gen_jwt_secret || std::fs::metadata("init_state/jwt_secret.txt").is_err() {
         let jwt_secret = gen_jwt_secret();
         let mut file = std::fs::File::create("init_state/jwt_secret.txt")?;
         file.write_all(hex::encode(jwt_secret).as_bytes())?;
     }
-    if force_gen_priv_key || std::fs::metadata("init_state/priv_key.txt").is_err() {
+    if params.force_gen_priv_key || std::fs::metadata("init_state/priv_key.txt").is_err() {
         let secp = Secp256k1::new();
         let (core_secret_key, _core_public_key) =
             secp.generate_keypair(&mut secp256k1::rand::thread_rng());
@@ -263,14 +216,21 @@ async fn run_server(
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let host_id = hex::encode(core_public_key.serialize());
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
-    let uri_parsed = url::Url::parse(&mq_uri)?;
+    let uri_parsed = url::Url::parse(&params.mq_uri.as_ref().unwrap())?;
     let mq: Arc<dyn MQ> = if uri_parsed.scheme().starts_with("redis") {
-        Arc::new(RedisStream::new(&mq_uri, &mq_prefix))
+        Arc::new(RedisStream::new(
+            &params.mq_uri.as_ref().unwrap(),
+            &params.mq_prefix,
+        ))
     } else {
-        if mq_api.is_none() {
+        if params.mq_api.is_none() {
             Err("--mq-api <MQ_API> must be provided.")?;
         }
-        Arc::new(RabbitMQ::new(&mq_uri, &mq_api.unwrap(), &mq_prefix))
+        Arc::new(RabbitMQ::new(
+            &params.mq_uri.as_ref().unwrap(),
+            &params.mq_api.as_ref().unwrap(),
+            &params.mq_prefix,
+        ))
     };
     let mut service = MyService {
         storage: Box::new(StorageWithMQSubscription::new(
@@ -285,15 +245,16 @@ async fn run_server(
         public_key: core_public_key,
         inter_core_ca_certificate: None,
         inter_core_identity: None,
-        core_uri,
-        inter_core_reverse_mode,
+        params: params.clone(),
         inter_core_reverse_senders: Mutex::new(HashMap::new()),
         inter_core_reverse_handlers: Mutex::new(HashMap::new()),
     };
-    if let Some(inter_core_ca) = inter_core_ca {
+    if let Some(inter_core_ca) = params.inter_core_ca {
         service = service.ca_certificate(&inter_core_ca.as_path().display().to_string());
     }
-    if let (Some(inter_core_cert), Some(inter_core_key)) = (inter_core_cert, inter_core_key) {
+    if let (Some(inter_core_cert), Some(inter_core_key)) =
+        (params.inter_core_cert, params.inter_core_key)
+    {
         service = service.identity(
             &inter_core_cert.as_path().display().to_string(),
             &inter_core_key.as_path().display().to_string(),
@@ -307,7 +268,7 @@ async fn run_server(
     let grpc_service = CoLinkServer::with_interceptor(grpc_service, check_auth_interceptor);
     let grpc_service = tonic_web::config().enable(grpc_service);
 
-    if cert.is_none() || key.is_none() {
+    if params.cert.is_none() || params.key.is_none() {
         /* No TLS */
         Server::builder()
             .layer(tower_http::cors::CorsLayer::permissive())
@@ -317,11 +278,11 @@ async fn run_server(
             .await?;
     } else {
         // reading cert and key of server from disk
-        let cert = tokio::fs::read(cert.unwrap()).await?;
-        let key = tokio::fs::read(key.unwrap()).await?;
+        let cert = tokio::fs::read(params.cert.unwrap()).await?;
+        let key = tokio::fs::read(params.key.unwrap()).await?;
         // creating identity from cert and key
         let server_identity = tonic::transport::Identity::from_pem(cert, key);
-        let tls = if let Some(ca) = ca {
+        let tls = if let Some(ca) = params.ca {
             /* MTLS */
             let client_ca_cert = tokio::fs::read(ca).await?;
             let client_ca_cert = tonic::transport::Certificate::from_pem(client_ca_cert);
