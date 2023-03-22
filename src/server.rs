@@ -216,10 +216,10 @@ async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error
         secp256k1::PublicKey::from_secret_key(&Secp256k1::new(), &core_secret_key);
     let host_id = hex::encode(core_public_key.serialize());
     tokio::spawn(print_host_token(jwt_secret, host_id.clone()));
-    let uri_parsed = url::Url::parse(&params.mq_uri.as_ref().unwrap())?;
+    let uri_parsed = url::Url::parse(params.mq_uri.as_ref().unwrap())?;
     let mq: Arc<dyn MQ> = if uri_parsed.scheme().starts_with("redis") {
         Arc::new(RedisStream::new(
-            &params.mq_uri.as_ref().unwrap(),
+            params.mq_uri.as_ref().unwrap(),
             &params.mq_prefix,
         ))
     } else {
@@ -227,8 +227,8 @@ async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error
             Err("--mq-api <MQ_API> must be provided.")?;
         }
         Arc::new(RabbitMQ::new(
-            &params.mq_uri.as_ref().unwrap(),
-            &params.mq_api.as_ref().unwrap(),
+            params.mq_uri.as_ref().unwrap(),
+            params.mq_api.as_ref().unwrap(),
             &params.mq_prefix,
         ))
     };

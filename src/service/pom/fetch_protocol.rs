@@ -13,9 +13,9 @@ pub(super) async fn fetch_protocol(
 ) -> Result<(), String> {
     if !source.is_empty() {
         if !dev_mode {
-            return Err(format!(
-                "Please enable dev mode to allow loading protocol from arbitrary source.",
-            ));
+            return Err(
+                "Please enable dev mode to allow loading protocol from arbitrary source.".into(),
+            );
         }
         if source_type.is_empty() {
             return Err(format!(
