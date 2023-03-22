@@ -1,4 +1,6 @@
-use super::utils::{download_tgz, fetch_from_git, get_colink_home};
+mod fetch_protocol;
+use self::fetch_protocol::fetch_protocol;
+use super::utils::get_colink_home;
 use crate::colink_proto::*;
 use fs4::FileExt;
 use prost::Message;
@@ -7,7 +9,6 @@ use std::{
     path::Path,
     process::{Command, Stdio},
 };
-use tokio::io::AsyncWriteExt;
 use toml::Value;
 use tonic::{Request, Response, Status};
 use tracing::error;
@@ -28,10 +29,10 @@ impl crate::server::MyService {
             return Err(Status::permission_denied(""));
         }
         // prepare CLI param to start PO instance
-        if self.core_uri.is_none() {
+        if self.params.core_uri.is_none() {
             return Err(Status::internal("core_uri not found."));
         }
-        let core_addr = self.core_uri.as_ref().unwrap();
+        let core_addr = self.params.core_uri.as_ref().unwrap();
         let user_jwt = self
             ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
             .await?;
@@ -93,10 +94,19 @@ impl crate::server::MyService {
                     )));
                 }
             }
-            // fetch protocol package from inventory if protocol package folder does not exist
+            // fetch protocol package if protocol package folder does not exist
             let colink_toml_path = protocol_package_dir.join("colink.toml");
             if std::fs::metadata(&colink_toml_path).is_err() {
-                match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
+                match fetch_protocol(
+                    protocol_name,
+                    &colink_home,
+                    &request.get_ref().source_type,
+                    &request.get_ref().source,
+                    &self.params.pom_protocol_inventory,
+                    self.params.pom_dev_mode,
+                )
+                .await
+                {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(Status::not_found(format!(
@@ -344,158 +354,6 @@ impl crate::server::MyService {
         res?;
         Ok(Response::new(Empty::default()))
     }
-}
-
-const PROTOCOL_INVENTORY: &str =
-    "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols";
-async fn fetch_protocol_from_inventory(
-    protocol_name: &str,
-    colink_home: &str,
-) -> Result<(), String> {
-    let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
-    let http_client = reqwest::Client::new();
-    let resp = http_client.get(url).send().await;
-    if resp.is_err() || resp.as_ref().unwrap().status() != reqwest::StatusCode::OK {
-        return Err(format!(
-            "fail to find protocol {} in inventory",
-            protocol_name
-        ));
-    }
-    let inventory_toml = match resp.unwrap().text().await {
-        Ok(toml) => match toml.parse::<Value>() {
-            Ok(toml) => toml,
-            Err(err) => return Err(err.to_string()),
-        },
-        Err(err) => {
-            return Err(err.to_string());
-        }
-    };
-    let protocol_package_dir = Path::new(&colink_home)
-        .join("protocols")
-        .join(protocol_name);
-    if inventory_toml.get("binary").is_some()
-        && inventory_toml["binary"]
-            .get(&format!(
-                "{}-{}",
-                std::env::consts::OS,
-                std::env::consts::ARCH
-            ))
-            .is_some()
-    {
-        if let Some(binary) = inventory_toml["binary"]
-            [&format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)]
-            .as_table()
-        {
-            if binary.get("url").is_some()
-                && binary["url"].as_str().is_some()
-                && binary.get("sha256").is_some()
-                && binary["sha256"].as_str().is_some()
-            {
-                download_tgz(
-                    binary["url"].as_str().unwrap(),
-                    binary["sha256"].as_str().unwrap(),
-                    protocol_package_dir.to_str().unwrap(),
-                )
-                .await?;
-                return Ok(());
-            }
-        }
-    }
-    if inventory_toml.get("source").is_some() {
-        if inventory_toml["source"].get("archive").is_some() {
-            if let Some(source) = inventory_toml["source"]["archive"].as_table() {
-                if source.get("url").is_some()
-                    && source["url"].as_str().is_some()
-                    && source.get("sha256").is_some()
-                    && source["sha256"].as_str().is_some()
-                {
-                    download_tgz(
-                        source["url"].as_str().unwrap(),
-                        source["sha256"].as_str().unwrap(),
-                        protocol_package_dir.to_str().unwrap(),
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-        if inventory_toml["source"].get("git").is_some() {
-            if let Some(source) = inventory_toml["source"]["git"].as_table() {
-                if source.get("url").is_some()
-                    && source["url"].as_str().is_some()
-                    && source.get("commit").is_some()
-                    && source["commit"].as_str().is_some()
-                {
-                    fetch_from_git(
-                        source["url"].as_str().unwrap(),
-                        source["commit"].as_str().unwrap(),
-                        protocol_package_dir.to_str().unwrap(),
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-    }
-    if inventory_toml.get("docker").is_some() && inventory_toml["docker"].get("image").is_some() {
-        if let Some(source) = inventory_toml["docker"]["image"].as_table() {
-            if source.get("name").is_some()
-                && source["name"].as_str().is_some()
-                && source.get("digest").is_some()
-                && source["digest"].as_str().is_some()
-            {
-                match tokio::fs::create_dir_all(&protocol_package_dir).await {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(format!(
-                            "fail to create protocol_package_dir for {}@{}",
-                            source["name"].as_str().unwrap(),
-                            source["digest"].as_str().unwrap()
-                        ))
-                    }
-                }
-                let mut file = match tokio::fs::File::create(
-                    &Path::new(&protocol_package_dir).join("colink.toml"),
-                )
-                .await
-                {
-                    Ok(file) => file,
-                    Err(_) => {
-                        return Err(format!(
-                            "fail to create colink.toml file for {}@{}",
-                            source["name"].as_str().unwrap(),
-                            source["digest"].as_str().unwrap()
-                        ))
-                    }
-                };
-                match file
-                    .write_all(
-                        format!(
-                            "[package]\ndocker_image = \"{}@{}\"\n",
-                            source["name"].as_str().unwrap(),
-                            source["digest"].as_str().unwrap()
-                        )
-                        .as_bytes(),
-                    )
-                    .await
-                {
-                    Ok(_) => {}
-                    Err(_) => {
-                        return Err(format!(
-                            "fail to write colink.toml file for {}@{}",
-                            source["name"].as_str().unwrap(),
-                            source["digest"].as_str().unwrap()
-                        ))
-                    }
-                }
-                return Ok(());
-            }
-        }
-    }
-    Err(format!(
-        "the inventory file of protocol {} is damaged",
-        protocol_name
-    ))
 }
 
 fn get_file_lock(colink_home: &str, protocol_name: &str) -> std::io::Result<std::fs::File> {

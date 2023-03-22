@@ -77,4 +77,16 @@ pub struct CoLinkServerParams {
     /// Create reverse connections to other servers.
     #[arg(long, env = "COLINK_SERVER_INTER_CORE_REVERSE_MODE")]
     pub inter_core_reverse_mode: bool,
+
+    /// Set protocol inventory for POM.
+    #[arg(
+        long,
+        env = "COLINK_POM_PROTOCOL_INVENTORY",
+        default_value = "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols"
+    )]
+    pub pom_protocol_inventory: String,
+
+    /// Allow POM to launch protocol from any source.
+    #[arg(long, env = "COLINK_POM_DEV_MODE")]
+    pub pom_dev_mode: bool,
 }
