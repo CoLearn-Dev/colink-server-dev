@@ -2,10 +2,11 @@ pub mod colink_proto {
     tonic::include_proto!("colink");
 }
 
-use ::colink_server::server::init_and_run_server;
 use chrono::Duration;
 use colink_proto::co_link_client::CoLinkClient;
 use colink_proto::*;
+use colink_server::params::CoLinkServerParams;
+use colink_server::server::init_and_run_server;
 use secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256};
 use tonic::metadata::MetadataValue;
@@ -77,23 +78,27 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
             Some("http://guest:guest@localhost:15672/api".to_string()),
         )
     };
-    tokio::spawn(init_and_run_server(
-        "127.0.0.1".to_string(),
-        12300,
+    tokio::spawn(init_and_run_server(CoLinkServerParams {
+        address: "127.0.0.1".to_string(),
+        port: 12300,
         mq_uri,
         mq_api,
-        "colink-test".to_string(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-        false,
-        false,
-    ));
+        mq_prefix: "colink-test".to_string(),
+        core_uri: None,
+        cert: None,
+        key: None,
+        ca: None,
+        inter_core_ca: None,
+        inter_core_cert: None,
+        inter_core_key: None,
+        force_gen_jwt_secret: false,
+        force_gen_priv_key: false,
+        inter_core_reverse_mode: false,
+        pom_protocol_inventory:
+            "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols"
+                .to_string(),
+        pom_dev_mode: false,
+    }));
     loop {
         if std::fs::metadata("host_token.txt").is_ok()
             && std::net::TcpStream::connect(&format!("{}:{}", "127.0.0.1", 12300)).is_ok()

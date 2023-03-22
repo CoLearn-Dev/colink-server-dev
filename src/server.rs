@@ -162,7 +162,6 @@ impl CoLink for GrpcService {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn init_and_run_server(mut params: CoLinkServerParams) {
     let _redis_server = if params.mq_uri.is_none() {
         let (redis_server, uri) = match start_redis_server().await {
@@ -186,7 +185,6 @@ pub async fn init_and_run_server(mut params: CoLinkServerParams) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error::Error>> {
     let socket_address = format!("{}:{}", params.address, params.port)
         .parse()
