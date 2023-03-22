@@ -156,11 +156,11 @@ async fn create_toml_for_docker(image: &str, protocol_package_dir: &str) -> Resu
         Ok(_) => {}
         Err(_) => return Err(format!("fail to create protocol_package_dir for {}", image)),
     }
-    let mut file =
-        match std::fs::File::create(Path::new(&protocol_package_dir).join("colink.toml")) {
-            Ok(file) => file,
-            Err(_) => return Err(format!("fail to create colink.toml file for {}", image)),
-        };
+    let mut file = match std::fs::File::create(Path::new(&protocol_package_dir).join("colink.toml"))
+    {
+        Ok(file) => file,
+        Err(_) => return Err(format!("fail to create colink.toml file for {}", image)),
+    };
     match file.write_all(format!("[package]\ndocker_image = \"{}\"\n", image).as_bytes()) {
         Ok(_) => {}
         Err(_) => return Err(format!("fail to write colink.toml file for {}", image)),
