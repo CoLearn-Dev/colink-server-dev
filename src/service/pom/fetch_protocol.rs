@@ -1,6 +1,5 @@
 use super::super::utils::{download_tgz, fetch_from_git};
-use std::path::Path;
-use tokio::io::AsyncWriteExt;
+use std::{io::Write, path::Path};
 use toml::Value;
 
 pub(super) async fn fetch_protocol(
@@ -22,7 +21,7 @@ pub(super) async fn fetch_protocol(
                 "Please specify the source_type of this source {source}.",
             ));
         }
-        fetch_protocol_from_souce(protocol_name, colink_home, source_type, source).await?;
+        return fetch_protocol_from_souce(protocol_name, colink_home, source_type, source).await;
     }
     fetch_protocol_from_inventory(protocol_name, colink_home, source_type, protocol_inventory).await
 }
@@ -153,22 +152,16 @@ async fn fetch_protocol_from_inventory(
 }
 
 async fn create_toml_for_docker(image: &str, protocol_package_dir: &str) -> Result<(), String> {
-    match tokio::fs::create_dir_all(&protocol_package_dir).await {
+    match std::fs::create_dir_all(protocol_package_dir) {
         Ok(_) => {}
         Err(_) => return Err(format!("fail to create protocol_package_dir for {}", image)),
     }
-    let mut file = match tokio::fs::File::create(
-        &Path::new(&protocol_package_dir).join("colink.toml"),
-    )
-    .await
-    {
-        Ok(file) => file,
-        Err(_) => return Err(format!("fail to create colink.toml file for {}", image)),
-    };
-    match file
-        .write_all(format!("[package]\ndocker_image = \"{}\"\n", image).as_bytes())
-        .await
-    {
+    let mut file =
+        match std::fs::File::create(Path::new(&protocol_package_dir).join("colink.toml")) {
+            Ok(file) => file,
+            Err(_) => return Err(format!("fail to create colink.toml file for {}", image)),
+        };
+    match file.write_all(format!("[package]\ndocker_image = \"{}\"\n", image).as_bytes()) {
         Ok(_) => {}
         Err(_) => return Err(format!("fail to write colink.toml file for {}", image)),
     }

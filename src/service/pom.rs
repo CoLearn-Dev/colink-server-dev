@@ -110,7 +110,7 @@ impl crate::server::MyService {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(Status::not_found(format!(
-                            "fail to fetch protocol {} from inventory: {}",
+                            "fail to fetch protocol {}: {}",
                             protocol_name, err
                         )));
                     }
