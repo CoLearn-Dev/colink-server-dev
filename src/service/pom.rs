@@ -170,33 +170,47 @@ impl crate::server::MyService {
             }
             // start instance
             let xid = if let Some(entrypoint) = entrypoint {
-                let process = match Command::new("bash")
+                let mut command = Command::new("bash");
+                command
                     .arg("-c")
                     .arg(entrypoint)
                     .current_dir(&protocol_package_dir)
                     .env("COLINK_CORE_ADDR", core_addr)
                     .env("COLINK_JWT", user_jwt)
                     .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                {
+                    .stderr(Stdio::null());
+                if !request.get_ref().vt_public_addr.is_empty() {
+                    command.env(
+                        "COLINK_VT_PUBLIC_ADDR",
+                        request.get_ref().vt_public_addr.clone(),
+                    );
+                }
+                let process = match command.spawn() {
                     Ok(child) => child,
                     Err(err) => return Err(Status::internal(err.to_string())),
                 };
                 process.id().to_string()
             } else if let Some(docker_image) = docker_image {
+                let mut args = vec![
+                    "run".to_string(),
+                    "-dit".to_string(),
+                    "--rm".to_string(),
+                    "--net=host".to_string(),
+                    "-e".to_string(),
+                    format!("COLINK_CORE_ADDR={core_addr}"),
+                    "-e".to_string(),
+                    format!("COLINK_JWT={user_jwt}"),
+                ];
+                if !request.get_ref().vt_public_addr.is_empty() {
+                    args.push("-e".to_string());
+                    args.push(format!(
+                        "COLINK_VT_PUBLIC_ADDR={}",
+                        request.get_ref().vt_public_addr
+                    ));
+                }
+                args.push(docker_image.to_string());
                 let container_id = match Command::new("docker")
-                    .args([
-                        "run",
-                        "-dit",
-                        "--rm",
-                        "--net=host",
-                        "-e",
-                        &format!("COLINK_CORE_ADDR={core_addr}"),
-                        "-e",
-                        &format!("COLINK_JWT={user_jwt}"),
-                        docker_image,
-                    ])
+                    .args(args)
                     .current_dir(&protocol_package_dir)
                     .output()
                 {
