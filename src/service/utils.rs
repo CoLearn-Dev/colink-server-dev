@@ -222,6 +222,9 @@ impl crate::server::MyService {
         user_consent: &UserConsent,
         core_public_key_vec: &[u8],
     ) -> Result<Vec<u8>, Status> {
+        if chrono::Utc::now().timestamp() > user_consent.expiration_timestamp {
+            return Err(Status::internal("User consent has expired."));
+        }
         let user_consent_signature_timestamp: i64 = user_consent.signature_timestamp;
         let user_consent_expiration_timestamp: i64 = user_consent.expiration_timestamp;
         let user_consent_signature: &Vec<u8> = &user_consent.signature;
