@@ -97,7 +97,7 @@ async fn grpc_service_storage() -> Result<(), Box<dyn std::error::Error>> {
         pom_protocol_inventory:
             "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols"
                 .to_string(),
-        pom_dev_mode: false,
+        pom_allow_external_source: false,
     }));
     loop {
         if std::fs::metadata("host_token.txt").is_ok()

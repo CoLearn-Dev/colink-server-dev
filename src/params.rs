@@ -87,6 +87,6 @@ pub struct CoLinkServerParams {
     pub pom_protocol_inventory: String,
 
     /// Allow POM to launch protocol from any source.
-    #[arg(long, env = "COLINK_POM_DEV_MODE")]
-    pub pom_dev_mode: bool,
+    #[arg(long, env = "COLINK_POM_ALLOW_EXTERNAL_SOURCE")]
+    pub pom_allow_external_source: bool,
 }

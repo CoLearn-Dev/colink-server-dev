@@ -103,7 +103,7 @@ impl crate::server::MyService {
                     &request.get_ref().source_type,
                     &request.get_ref().source,
                     &self.params.pom_protocol_inventory,
-                    self.params.pom_dev_mode,
+                    self.params.pom_allow_external_source,
                 )
                 .await
                 {
