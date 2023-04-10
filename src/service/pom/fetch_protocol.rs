@@ -1,11 +1,12 @@
 use super::super::utils::{download_tgz, fetch_from_git};
+use crate::colink_proto::*;
 use std::{io::Write, path::Path};
 use toml::Value;
 
 pub(super) async fn fetch_protocol(
     protocol_name: &str,
     colink_home: &str,
-    source_type: &str,
+    source_type: &StartProtocolOperatorSourceType,
     source: &str,
     protocol_inventory: &str,
     dev_mode: bool,
@@ -16,7 +17,7 @@ pub(super) async fn fetch_protocol(
                 "Please enable dev mode to allow loading protocol from arbitrary source.".into(),
             );
         }
-        if source_type.is_empty() {
+        if matches!(source_type, StartProtocolOperatorSourceType::None) {
             return Err(format!(
                 "Please specify the source_type of this source {source}.",
             ));
@@ -29,7 +30,7 @@ pub(super) async fn fetch_protocol(
 async fn fetch_protocol_from_inventory(
     protocol_name: &str,
     colink_home: &str,
-    source_type: &str,
+    source_type: &StartProtocolOperatorSourceType,
     protocol_inventory: &str,
 ) -> Result<(), String> {
     let url = &format!("{}/{}.toml", protocol_inventory, protocol_name);
@@ -53,8 +54,10 @@ async fn fetch_protocol_from_inventory(
     let protocol_package_dir = Path::new(&colink_home)
         .join("protocols")
         .join(protocol_name);
-    if (source_type.is_empty() || source_type == "tgz")
-        && inventory_toml.get("binary").is_some()
+    if matches!(
+        source_type,
+        StartProtocolOperatorSourceType::None | StartProtocolOperatorSourceType::Tgz
+    ) && inventory_toml.get("binary").is_some()
         && inventory_toml["binary"]
             .get(&format!(
                 "{}-{}",
@@ -82,8 +85,10 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    if (source_type.is_empty() || source_type == "tgz")
-        && inventory_toml.get("source").is_some()
+    if matches!(
+        source_type,
+        StartProtocolOperatorSourceType::None | StartProtocolOperatorSourceType::Tgz
+    ) && inventory_toml.get("source").is_some()
         && inventory_toml["source"].get("archive").is_some()
     {
         if let Some(source) = inventory_toml["source"]["archive"].as_table() {
@@ -102,8 +107,10 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    if (source_type.is_empty() || source_type == "git")
-        && inventory_toml.get("source").is_some()
+    if matches!(
+        source_type,
+        StartProtocolOperatorSourceType::None | StartProtocolOperatorSourceType::Git
+    ) && inventory_toml.get("source").is_some()
         && inventory_toml["source"].get("git").is_some()
     {
         if let Some(source) = inventory_toml["source"]["git"].as_table() {
@@ -122,8 +129,10 @@ async fn fetch_protocol_from_inventory(
             }
         }
     }
-    if (source_type.is_empty() || source_type == "docker")
-        && inventory_toml.get("docker").is_some()
+    if matches!(
+        source_type,
+        StartProtocolOperatorSourceType::None | StartProtocolOperatorSourceType::Docker
+    ) && inventory_toml.get("docker").is_some()
         && inventory_toml["docker"].get("image").is_some()
     {
         if let Some(source) = inventory_toml["docker"]["image"].as_table() {
@@ -171,20 +180,20 @@ async fn create_toml_for_docker(image: &str, protocol_package_dir: &str) -> Resu
 async fn fetch_protocol_from_souce(
     protocol_name: &str,
     colink_home: &str,
-    source_type: &str,
+    source_type: &StartProtocolOperatorSourceType,
     source: &str,
 ) -> Result<(), String> {
     let protocol_package_dir = Path::new(&colink_home)
         .join("protocols")
         .join(protocol_name);
     match source_type {
-        "tgz" => {
+        StartProtocolOperatorSourceType::Tgz => {
             download_tgz(source, "", protocol_package_dir.to_str().unwrap()).await?;
         }
-        "git" => {
+        StartProtocolOperatorSourceType::Git => {
             fetch_from_git(source, "", protocol_package_dir.to_str().unwrap()).await?;
         }
-        "docker" => {
+        StartProtocolOperatorSourceType::Docker => {
             create_toml_for_docker(source, protocol_package_dir.to_str().unwrap()).await?;
         }
         _ => {}

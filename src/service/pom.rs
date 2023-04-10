@@ -100,7 +100,7 @@ impl crate::server::MyService {
                 match fetch_protocol(
                     protocol_name,
                     &colink_home,
-                    &request.get_ref().source_type,
+                    &request.get_ref().source_type(),
                     &request.get_ref().source,
                     &self.params.pom_protocol_inventory,
                     self.params.pom_allow_external_source,
