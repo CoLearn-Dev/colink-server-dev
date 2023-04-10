@@ -14,7 +14,7 @@ pub(super) async fn fetch_protocol(
     if !source.is_empty() {
         if !dev_mode {
             return Err(
-                "Please enable pom_allow_external_source to allow loading protocol from arbitrary source.".into(),
+                "Please enable --pom-allow-external-source to allow loading protocol from arbitrary source.".into(),
             );
         }
         if matches!(source_type, StartProtocolOperatorSourceType::None) {
