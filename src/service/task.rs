@@ -41,7 +41,7 @@ impl crate::server::MyService {
         self._internal_storage_update(&user_id, &format!("tasks:{}", task_id), &payload)
             .await?;
         for i in 1..task.participants.len() {
-            if self.inter_core_reverse_mode {
+            if self.params.inter_core_reverse_mode {
                 self.send_inter_core_sync_task_with_reverse_connection(
                     &user_id,
                     &task.participants[i].user_id,

@@ -1,4 +1,6 @@
-use super::utils::{download_tgz, fetch_from_git, get_colink_home};
+mod fetch_protocol;
+use self::fetch_protocol::fetch_protocol;
+use super::utils::get_colink_home;
 use crate::colink_proto::*;
 use fs4::FileExt;
 use prost::Message;
@@ -27,10 +29,10 @@ impl crate::server::MyService {
             return Err(Status::permission_denied(""));
         }
         // prepare CLI param to start PO instance
-        if self.core_uri.is_none() {
+        if self.params.core_uri.is_none() {
             return Err(Status::internal("core_uri not found."));
         }
-        let core_addr = self.core_uri.as_ref().unwrap();
+        let core_addr = self.params.core_uri.as_ref().unwrap();
         let user_jwt = self
             ._host_storage_read(&format!("users:{}:user_jwt", request.get_ref().user_id))
             .await?;
@@ -92,14 +94,23 @@ impl crate::server::MyService {
                     )));
                 }
             }
-            // fetch protocol package from inventory if protocol package folder does not exist
+            // fetch protocol package if protocol package folder does not exist
             let colink_toml_path = protocol_package_dir.join("colink.toml");
             if std::fs::metadata(&colink_toml_path).is_err() {
-                match fetch_protocol_from_inventory(protocol_name, &colink_home).await {
+                match fetch_protocol(
+                    protocol_name,
+                    &colink_home,
+                    &request.get_ref().source_type(),
+                    &request.get_ref().source,
+                    &self.params.pom_protocol_inventory,
+                    self.params.pom_allow_external_source,
+                )
+                .await
+                {
                     Ok(_) => {}
                     Err(err) => {
                         return Err(Status::not_found(format!(
-                            "protocol {} not found from inventory: {}",
+                            "fail to fetch protocol {}: {}",
                             protocol_name, err
                         )));
                     }
@@ -113,16 +124,22 @@ impl crate::server::MyService {
                 Ok(toml) => toml,
                 Err(err) => return Err(Status::internal(err.to_string())),
             };
-            if colink_toml.get("package").is_none()
-                || colink_toml["package"].get("entrypoint").is_none()
-            {
-                return Err(Status::not_found("entrypoint not found."));
+            if colink_toml.get("package").is_none() {
+                return Err(Status::not_found("package not found."));
             }
-            let entrypoint = colink_toml["package"]["entrypoint"].as_str();
-            if entrypoint.is_none() {
-                return Err(Status::not_found("entrypoint not found."));
+            let entrypoint = if let Some(value) = colink_toml["package"].get("entrypoint") {
+                value.as_str()
+            } else {
+                None
+            };
+            let docker_image = if let Some(value) = colink_toml["package"].get("docker_image") {
+                value.as_str()
+            } else {
+                None
+            };
+            if entrypoint.is_none() && docker_image.is_none() {
+                return Err(Status::not_found("entrypoint or docker_image not found."));
             }
-            let entrypoint = entrypoint.unwrap();
             // install dependencies
             if colink_toml["package"].get("install_script").is_some() {
                 let install_script = colink_toml["package"]["install_script"].as_str();
@@ -152,20 +169,58 @@ impl crate::server::MyService {
                 }
             }
             // start instance
-            let process = match Command::new("bash")
-                .arg("-c")
-                .arg(entrypoint)
-                .current_dir(&protocol_package_dir)
-                .env("COLINK_CORE_ADDR", core_addr)
-                .env("COLINK_JWT", user_jwt)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-            {
-                Ok(child) => child,
-                Err(err) => return Err(Status::internal(err.to_string())),
+            let xid = if let Some(entrypoint) = entrypoint {
+                let mut command = Command::new("bash");
+                command
+                    .arg("-c")
+                    .arg(entrypoint)
+                    .current_dir(&protocol_package_dir)
+                    .env("COLINK_CORE_ADDR", core_addr)
+                    .env("COLINK_JWT", user_jwt)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                if !request.get_ref().vt_public_addr.is_empty() {
+                    command.env(
+                        "COLINK_VT_PUBLIC_ADDR",
+                        request.get_ref().vt_public_addr.clone(),
+                    );
+                }
+                let process = match command.spawn() {
+                    Ok(child) => child,
+                    Err(err) => return Err(Status::internal(err.to_string())),
+                };
+                process.id().to_string()
+            } else if let Some(docker_image) = docker_image {
+                let mut args = vec![
+                    "run".to_string(),
+                    "-dit".to_string(),
+                    "--rm".to_string(),
+                    "--net=host".to_string(),
+                    "-e".to_string(),
+                    format!("COLINK_CORE_ADDR={core_addr}"),
+                    "-e".to_string(),
+                    format!("COLINK_JWT={user_jwt}"),
+                ];
+                if !request.get_ref().vt_public_addr.is_empty() {
+                    args.push("-e".to_string());
+                    args.push(format!(
+                        "COLINK_VT_PUBLIC_ADDR={}",
+                        request.get_ref().vt_public_addr
+                    ));
+                }
+                args.push(docker_image.to_string());
+                let container_id = match Command::new("docker")
+                    .args(args)
+                    .current_dir(&protocol_package_dir)
+                    .output()
+                {
+                    Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+                    Err(err) => return Err(Status::internal(err.to_string())),
+                };
+                container_id.replace(|c: char| !c.is_ascii_alphanumeric(), "")
+            } else {
+                unreachable!()
             };
-            let pid = process.id().to_string();
             // update instance information in host storage
             self._host_storage_update(
                 &format!("protocol_operator_instances:{}:user_id", instance_id),
@@ -173,8 +228,18 @@ impl crate::server::MyService {
             )
             .await?;
             self._host_storage_update(
-                &format!("protocol_operator_instances:{}:pid", instance_id),
-                pid.as_bytes(),
+                &format!(
+                    "protocol_operator_instances:{}:{}",
+                    instance_id,
+                    if entrypoint.is_some() {
+                        "pid"
+                    } else if docker_image.is_some() {
+                        "container_id"
+                    } else {
+                        unreachable!()
+                    }
+                ),
+                xid.as_bytes(),
             )
             .await?;
             self._host_storage_update(
@@ -226,18 +291,42 @@ impl crate::server::MyService {
                 "protocol_operator_instances:{}:pid",
                 request.get_ref().instance_id
             ))
-            .await?;
-        let pid = String::from_utf8(pid).unwrap();
-        // kill the instance
-        match Command::new("kill").args(["-9", &pid]).output() {
-            Ok(output) => {
-                if !output.status.success() {
-                    error!("cannot kill the instance: {:?}", output.stderr);
-                    return Err(Status::internal("cannot kill the instance".to_string()));
+            .await;
+        if let Ok(pid) = pid {
+            let pid = String::from_utf8(pid).unwrap();
+            // kill child process
+            let _ = Command::new("pkill").args(["-9", "-P", &pid]).output();
+            // kill process
+            match Command::new("kill").args(["-9", &pid]).output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("cannot kill the process: {:?}", output.stderr);
+                        return Err(Status::internal("cannot kill the process".to_string()));
+                    }
                 }
-            }
-            Err(err) => return Err(Status::internal(err.to_string())),
-        };
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+        } else if let Ok(container_id) = self
+            ._host_storage_read(&format!(
+                "protocol_operator_instances:{}:container_id",
+                request.get_ref().instance_id
+            ))
+            .await
+        {
+            let cid = String::from_utf8(container_id).unwrap();
+            // kill container
+            match Command::new("docker").args(["kill", &cid]).output() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("cannot kill the container: {:?}", output.stderr);
+                        return Err(Status::internal("cannot kill the container".to_string()));
+                    }
+                }
+                Err(err) => return Err(Status::internal(err.to_string())),
+            };
+        } else {
+            pid?;
+        }
         // update running instances in user storage
         let protocol_name = self
             ._host_storage_read(&format!(
@@ -279,103 +368,6 @@ impl crate::server::MyService {
         res?;
         Ok(Response::new(Empty::default()))
     }
-}
-
-const PROTOCOL_INVENTORY: &str =
-    "https://raw.githubusercontent.com/CoLearn-Dev/colink-protocol-inventory/main/protocols";
-async fn fetch_protocol_from_inventory(
-    protocol_name: &str,
-    colink_home: &str,
-) -> Result<(), String> {
-    let url = &format!("{}/{}.toml", PROTOCOL_INVENTORY, protocol_name);
-    let http_client = reqwest::Client::new();
-    let resp = http_client.get(url).send().await;
-    if resp.is_err() || resp.as_ref().unwrap().status() != reqwest::StatusCode::OK {
-        return Err(format!(
-            "fail to find protocol {} in inventory",
-            protocol_name
-        ));
-    }
-    let inventory_toml = match resp.unwrap().text().await {
-        Ok(toml) => match toml.parse::<Value>() {
-            Ok(toml) => toml,
-            Err(err) => return Err(err.to_string()),
-        },
-        Err(err) => {
-            return Err(err.to_string());
-        }
-    };
-    let protocol_package_dir = Path::new(&colink_home)
-        .join("protocols")
-        .join(protocol_name);
-    if inventory_toml.get("binary").is_some()
-        && inventory_toml["binary"]
-            .get(&format!(
-                "{}-{}",
-                std::env::consts::OS,
-                std::env::consts::ARCH
-            ))
-            .is_some()
-    {
-        if let Some(binary) = inventory_toml["binary"]
-            [&format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)]
-            .as_table()
-        {
-            if binary.get("url").is_some()
-                && binary["url"].as_str().is_some()
-                && binary.get("sha256").is_some()
-                && binary["sha256"].as_str().is_some()
-            {
-                download_tgz(
-                    binary["url"].as_str().unwrap(),
-                    binary["sha256"].as_str().unwrap(),
-                    protocol_package_dir.to_str().unwrap(),
-                )
-                .await?;
-                return Ok(());
-            }
-        }
-    }
-    if inventory_toml.get("source").is_some() {
-        if inventory_toml["source"].get("archive").is_some() {
-            if let Some(source) = inventory_toml["source"]["archive"].as_table() {
-                if source.get("url").is_some()
-                    && source["url"].as_str().is_some()
-                    && source.get("sha256").is_some()
-                    && source["sha256"].as_str().is_some()
-                {
-                    download_tgz(
-                        source["url"].as_str().unwrap(),
-                        source["sha256"].as_str().unwrap(),
-                        protocol_package_dir.to_str().unwrap(),
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-        if inventory_toml["source"].get("git").is_some() {
-            if let Some(source) = inventory_toml["source"]["git"].as_table() {
-                if source.get("url").is_some()
-                    && source["url"].as_str().is_some()
-                    && source.get("commit").is_some()
-                    && source["commit"].as_str().is_some()
-                {
-                    fetch_from_git(
-                        source["url"].as_str().unwrap(),
-                        source["commit"].as_str().unwrap(),
-                        protocol_package_dir.to_str().unwrap(),
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-    }
-    Err(format!(
-        "the inventory file of protocol {} is damaged",
-        protocol_name
-    ))
 }
 
 fn get_file_lock(colink_home: &str, protocol_name: &str) -> std::io::Result<std::fs::File> {

@@ -351,16 +351,18 @@ pub async fn fetch_from_git(url: &str, commit: &str, path: &str) -> Result<(), S
     if !git_clone.status.success() {
         return Err(format!("fail to fetch from {}", url));
     }
-    let git_checkout = match Command::new("git")
-        .args(["checkout", commit])
-        .current_dir(path)
-        .output()
-    {
-        Ok(git_checkout) => git_checkout,
-        Err(err) => return Err(err.to_string()),
-    };
-    if !git_checkout.status.success() {
-        return Err(format!("checkout error: commit {}", commit));
+    if !commit.is_empty() {
+        let git_checkout = match Command::new("git")
+            .args(["checkout", commit])
+            .current_dir(path)
+            .output()
+        {
+            Ok(git_checkout) => git_checkout,
+            Err(err) => return Err(err.to_string()),
+        };
+        if !git_checkout.status.success() {
+            return Err(format!("checkout error: commit {}", commit));
+        }
     }
     Ok(())
 }
@@ -386,22 +388,24 @@ pub async fn download_tgz(url: &str, sha256: &str, path: &str) -> Result<(), Str
             Err(err) => return Err(err.to_string()),
         };
     }
-    match file.seek(SeekFrom::Start(0)) {
-        Ok(_) => {}
-        Err(err) => return Err(err.to_string()),
-    }
-    let mut hasher = Sha256::new();
-    match io::copy(&mut file, &mut hasher) {
-        Ok(_) => {}
-        Err(err) => return Err(err.to_string()),
-    };
-    let hash = hasher.finalize();
-    let file_sha256 = hex::encode(hash);
-    if file_sha256 != sha256 {
-        return Err(format!(
-            "file checksum mismatch: expected {}, actual {}",
-            sha256, file_sha256
-        ));
+    if !sha256.is_empty() {
+        match file.seek(SeekFrom::Start(0)) {
+            Ok(_) => {}
+            Err(err) => return Err(err.to_string()),
+        }
+        let mut hasher = Sha256::new();
+        match io::copy(&mut file, &mut hasher) {
+            Ok(_) => {}
+            Err(err) => return Err(err.to_string()),
+        };
+        let hash = hasher.finalize();
+        let file_sha256 = hex::encode(hash);
+        if file_sha256 != sha256 {
+            return Err(format!(
+                "file checksum mismatch: expected {}, actual {}",
+                sha256, file_sha256
+            ));
+        }
     }
     match file.seek(SeekFrom::Start(0)) {
         Ok(_) => {}

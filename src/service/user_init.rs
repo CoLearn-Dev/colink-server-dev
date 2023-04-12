@@ -105,6 +105,7 @@ async fn _start_protocol_operator(
             protocol_name: protocol_name.to_string(),
             user_id: user_id.to_string(),
             upgrade: false,
+            ..Default::default()
         },
     );
     req.metadata_mut().insert(
