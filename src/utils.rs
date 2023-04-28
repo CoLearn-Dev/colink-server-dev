@@ -1,4 +1,7 @@
-use crate::service::utils::{download_tgz, get_colink_home};
+use crate::{
+    params::CoLinkServerParams,
+    service::utils::{download_tgz, get_colink_home},
+};
 use rand::Rng;
 use std::{
     path::Path,
@@ -17,7 +20,9 @@ impl Drop for RedisServer {
     }
 }
 
-pub async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::error::Error>> {
+pub async fn start_redis_server(
+    params: &CoLinkServerParams,
+) -> Result<(RedisServer, String), Box<dyn std::error::Error>> {
     let mut port = rand::thread_rng().gen_range(10000..20000);
     while std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
         port = rand::thread_rng().gen_range(10000..20000);
@@ -73,10 +78,16 @@ pub async fn start_redis_server() -> Result<(RedisServer, String), Box<dyn std::
         }
         std::thread::sleep(core::time::Duration::from_millis(10));
     }
+    let uri = url::Url::parse(params.core_uri.as_ref().unwrap())?;
     Ok((
         RedisServer {
             process: Some(process),
         },
-        format!("redis://:{}@127.0.0.1:{}/", password, port),
+        format!(
+            "redis://:{}@{}:{}/",
+            password,
+            uri.host_str().unwrap(),
+            port
+        ),
     ))
 }

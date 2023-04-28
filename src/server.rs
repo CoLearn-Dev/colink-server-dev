@@ -164,7 +164,7 @@ impl CoLink for GrpcService {
 
 pub async fn init_and_run_server(mut params: CoLinkServerParams) {
     let _redis_server = if params.mq_uri.is_none() {
-        let (redis_server, uri) = match start_redis_server().await {
+        let (redis_server, uri) = match start_redis_server(&params).await {
             Ok(res) => res,
             Err(e) => {
                 error!("{}", e);
