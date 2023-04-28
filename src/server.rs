@@ -266,6 +266,7 @@ async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error
     let grpc_service = CoLinkServer::with_interceptor(grpc_service, check_auth_interceptor);
     let grpc_service = tonic_web::config().enable(grpc_service);
 
+    println!("started server on {}:{}", params.address, params.port);
     if params.cert.is_none() || params.key.is_none() {
         /* No TLS */
         Server::builder()
@@ -292,7 +293,6 @@ async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error
             /* TLS */
             ServerTlsConfig::new().identity(server_identity)
         };
-
         Server::builder()
             .layer(tower_http::cors::CorsLayer::permissive())
             .accept_http1(true)
