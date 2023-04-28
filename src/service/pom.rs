@@ -83,9 +83,11 @@ impl crate::server::MyService {
             // upgrade protocol package if requested and there are no running instances
             if request.get_ref().upgrade {
                 if running_instances.list.is_empty() {
-                    match std::fs::remove_dir_all(&protocol_package_dir) {
-                        Ok(_) => {}
-                        Err(err) => return Err(Status::internal(err.to_string())),
+                    if std::fs::metadata(&protocol_package_dir).is_ok() {
+                        match std::fs::remove_dir_all(&protocol_package_dir) {
+                            Ok(_) => {}
+                            Err(err) => return Err(Status::internal(err.to_string())),
+                        }
                     }
                 } else {
                     return Err(Status::aborted(format!(
