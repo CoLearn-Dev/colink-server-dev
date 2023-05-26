@@ -167,7 +167,7 @@ async fn fetch_docker_image(image: &str, protocol_package_dir: &str) -> Result<(
     }
     match Command::new("docker")
         .args(["pull", image])
-        .current_dir(&protocol_package_dir)
+        .current_dir(protocol_package_dir)
         .output()
     {
         Ok(_) => {}
