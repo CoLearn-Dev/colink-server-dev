@@ -1,6 +1,6 @@
 use super::super::utils::{download_tgz, fetch_from_git};
 use crate::colink_proto::*;
-use std::{io::Write, path::Path};
+use std::{io::Write, path::Path, process::Command};
 use toml::Value;
 
 pub(super) async fn fetch_protocol(
@@ -141,7 +141,7 @@ async fn fetch_protocol_from_inventory(
                 && source.get("digest").is_some()
                 && source["digest"].as_str().is_some()
             {
-                create_toml_for_docker(
+                fetch_docker_image(
                     &format!(
                         "{}@{}",
                         source["name"].as_str().unwrap(),
@@ -160,11 +160,19 @@ async fn fetch_protocol_from_inventory(
     ))
 }
 
-async fn create_toml_for_docker(image: &str, protocol_package_dir: &str) -> Result<(), String> {
+async fn fetch_docker_image(image: &str, protocol_package_dir: &str) -> Result<(), String> {
     match std::fs::create_dir_all(protocol_package_dir) {
         Ok(_) => {}
         Err(_) => return Err(format!("fail to create protocol_package_dir for {}", image)),
     }
+    match Command::new("docker")
+        .args(["pull", image])
+        .current_dir(&protocol_package_dir)
+        .output()
+    {
+        Ok(_) => {}
+        Err(err) => return Err(format!("fail to fetch docker image: {}", err)),
+    };
     let mut file = match std::fs::File::create(Path::new(&protocol_package_dir).join("colink.toml"))
     {
         Ok(file) => file,
@@ -194,7 +202,7 @@ async fn fetch_protocol_from_souce(
             fetch_from_git(source, "", protocol_package_dir.to_str().unwrap()).await?;
         }
         StartProtocolOperatorSourceType::Docker => {
-            create_toml_for_docker(source, protocol_package_dir.to_str().unwrap()).await?;
+            fetch_docker_image(source, protocol_package_dir.to_str().unwrap()).await?;
         }
         _ => {}
     }
