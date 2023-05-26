@@ -224,12 +224,15 @@ impl crate::server::MyService {
                 unreachable!()
             };
             // update instance information in host storage
+            let instance_user = request.get_ref().user_id.clone();
             self._host_storage_update(
-                &format!("protocol_operator_instances:{}:user_id", instance_id),
-                request.get_ref().user_id.as_bytes(),
+                &format!("protocol_operator_instance_users:{}", instance_id),
+                instance_user.as_bytes(),
             )
             .await?;
-            self._host_storage_update(
+            // update instance information in user storage
+            self._internal_storage_update(
+                &instance_user,
                 &format!(
                     "protocol_operator_instances:{}:{}",
                     instance_id,
@@ -244,21 +247,17 @@ impl crate::server::MyService {
                 xid.as_bytes(),
             )
             .await?;
-            self._host_storage_update(
+            self._internal_storage_update(
+                &instance_user,
                 &format!("protocol_operator_instances:{}:protocol_name", instance_id),
                 protocol_name.as_bytes(),
             )
             .await?;
-            // update running instances in user storage
             running_instances.list.push(instance_id.to_string());
             let mut payload = vec![];
             running_instances.encode(&mut payload).unwrap();
-            self._internal_storage_update(
-                &request.get_ref().user_id,
-                &running_instances_key,
-                &payload,
-            )
-            .await?;
+            self._internal_storage_update(&instance_user, &running_instances_key, &payload)
+                .await?;
             Ok::<(), Status>(())
         }
         .await;
@@ -278,7 +277,7 @@ impl crate::server::MyService {
         let privilege = Self::get_key_from_metadata(request.metadata(), "privilege");
         let user_id = self
             ._host_storage_read(&format!(
-                "protocol_operator_instances:{}:user_id",
+                "protocol_operator_instance_users:{}",
                 request.get_ref().instance_id
             ))
             .await?;
@@ -289,10 +288,13 @@ impl crate::server::MyService {
             return Err(Status::permission_denied(""));
         }
         let pid = self
-            ._host_storage_read(&format!(
-                "protocol_operator_instances:{}:pid",
-                request.get_ref().instance_id
-            ))
+            ._internal_storage_read(
+                &user_id,
+                &format!(
+                    "protocol_operator_instances:{}:pid",
+                    request.get_ref().instance_id
+                ),
+            )
             .await;
         if let Ok(pid) = pid {
             let pid = String::from_utf8(pid).unwrap();
@@ -309,10 +311,13 @@ impl crate::server::MyService {
                 Err(err) => return Err(Status::internal(err.to_string())),
             };
         } else if let Ok(container_id) = self
-            ._host_storage_read(&format!(
-                "protocol_operator_instances:{}:container_id",
-                request.get_ref().instance_id
-            ))
+            ._internal_storage_read(
+                &user_id,
+                &format!(
+                    "protocol_operator_instances:{}:container_id",
+                    request.get_ref().instance_id
+                ),
+            )
             .await
         {
             let cid = String::from_utf8(container_id).unwrap();
@@ -331,10 +336,13 @@ impl crate::server::MyService {
         }
         // update running instances in user storage
         let protocol_name = self
-            ._host_storage_read(&format!(
-                "protocol_operator_instances:{}:protocol_name",
-                request.get_ref().instance_id
-            ))
+            ._internal_storage_read(
+                &user_id,
+                &format!(
+                    "protocol_operator_instances:{}:protocol_name",
+                    request.get_ref().instance_id
+                ),
+            )
             .await?;
         let protocol_name = String::from_utf8(protocol_name).unwrap();
         let running_instances_key = format!("protocol_operator_groups:{}", protocol_name);
