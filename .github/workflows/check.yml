@@ -39,6 +39,12 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           components: rustfmt, clippy
+      - name: Install protobuf
+        if: ${{ startsWith(matrix.ci_image, 'ubuntu') }}
+        run: sudo apt update && sudo apt install protobuf-compiler -y
+      - name: Install protobuf(macos)
+        if: ${{ startsWith(matrix.ci_image, 'macos') }}
+        run: brew install protobuf
       - name: Check
         run: cargo check --release --locked
       - name: Build
