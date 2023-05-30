@@ -264,7 +264,7 @@ async fn run_server(params: CoLinkServerParams) -> Result<(), Box<dyn std::error
     };
     let check_auth_interceptor = CheckAuthInterceptor { jwt_secret };
     let grpc_service = CoLinkServer::with_interceptor(grpc_service, check_auth_interceptor);
-    let grpc_service = tonic_web::config().enable(grpc_service);
+    let grpc_service = tonic_web::enable(grpc_service);
 
     println!("started server on {}:{}", params.address, params.port);
     if params.cert.is_none() || params.key.is_none() {

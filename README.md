@@ -22,7 +22,7 @@ To generate the corresponding certificates for mTLS, you can use OpenSSL or CFSS
 - [Example Configuration](https://github.com/CoLearn-Dev/colink-integration-test-dev/blob/main/example-rabbitmq/rabbitmq.conf)
 
 ## Start CoLink server
-CoLink server requires a message queue (RabbitMQ or Redis Stream) as its building block. When starting the CoLink server, we can specify MQ's URI and management API here (the default MQ is a built-in Redis). **Note: Redis mode does not support TLS for now. Please use RabbitMQ in production environments.**
+CoLink server requires a message queue (RabbitMQ or Redis Stream) as its building block. When starting the CoLink server, we can specify MQ's URI and management API here (the default MQ is a built-in Redis). **Note: The built-in Redis does not enable TLS. Please DO NOT use it in production environments.**
 
 Use the following command to start the CoLink server
 ```
