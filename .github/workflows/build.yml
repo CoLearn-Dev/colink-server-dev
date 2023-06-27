@@ -29,12 +29,17 @@ jobs:
         with:
           submodules: recursive
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          target: ${{ matrix.cargo_target }}
+        run: |
+          rustup target add ${{ matrix.cargo_target }}
+      - name: Install protobuf
+        if: ${{ startsWith(matrix.ci_image, 'ubuntu') }}
+        run: sudo apt update && sudo apt install protobuf-compiler -y
+      - name: Install protobuf(macos)
+        if: ${{ startsWith(matrix.ci_image, 'macos') }}
+        run: brew install protobuf
       - name: Install musl
         if: ${{ endsWith(matrix.cargo_target, 'musl') }}
-        run: sudo apt update && sudo apt install musl-tools
+        run: sudo apt update && sudo apt install musl-tools -y
       - name: Build
         run: cargo build --release --target ${{ matrix.cargo_target }}
       - name: Pack

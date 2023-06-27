@@ -36,9 +36,11 @@ jobs:
         with:
           submodules: recursive
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          components: rustfmt, clippy
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
+      - name: Install protobuf
+        run: sudo apt update && sudo apt install protobuf-compiler -y
       - name: Check
         run: cargo check --release --locked
       - name: Build
