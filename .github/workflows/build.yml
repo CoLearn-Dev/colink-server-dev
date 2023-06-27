@@ -29,9 +29,6 @@ jobs:
         with:
           submodules: recursive
       - name: Install Rust
-        # uses: actions-rs/toolchain@v1
-        # with:
-        #   target: ${{ matrix.cargo_target }}
         run: |
           rustup target add ${{ matrix.cargo_target }}
       - name: Install protobuf
